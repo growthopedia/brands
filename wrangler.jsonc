@@ -1,0 +1,40 @@
+{
+  // Baby Bodega brand outreach — deployed by Cloudflare Workers Builds on every push to main.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "brands",
+  "main": "src/index.js",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+
+  // Behind Cloudflare Access (Zero Trust). The app also refuses any request that didn't come through Access.
+  "workers_dev": true,
+  "routes": [{ "pattern": "brands.thecannizzos.com", "custom_domain": true }],
+
+  "rules": [{ "type": "Text", "globs": ["**/*.html", "**/*.sql", "**/*.txt", "**/*.svg"], "fallthrough": true }],
+
+  "d1_databases": [
+    { "binding": "DB", "database_name": "brands", "database_id": "57042927-3fd6-4b3d-9eeb-7fefe58d9fd1" }
+  ],
+
+  // Hourly: check Gmail for replies (once connected), queue 7-day follow-ups.
+  "triggers": { "crons": ["23 * * * *"] },
+
+  "vars": {
+    // Defaults only. Everything below can be changed in the app under Settings, no code needed.
+    "SITE_NAME": "Baby Bodega",
+    "SITE_URL": "https://strollers.engagements-c1b.workers.dev",
+    "SENDER_NAME": "Jen Cannizzo",
+    // The new domain's inbox. Leave empty until it exists; set it in Settings.
+    "SENDER_EMAIL": "",
+    // Required by law (CAN-SPAM) in commercial email. Set it in Settings. A PO box or virtual mailbox works.
+    "BUSINESS_ADDRESS": "",
+    "DAILY_SEND_CAP": "15",
+    "TIMEZONE": "America/New_York",
+    // Optional comma-separated list narrowing who can use the app beyond the Access policy.
+    "ALLOWED_EMAILS": ""
+  }
+  // Secrets (Cloudflare → Workers → brands → Settings → Variables and Secrets), all optional because
+  // each can be pasted in the app's Settings instead:
+  //   ANTHROPIC_API_KEY, GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET
+}

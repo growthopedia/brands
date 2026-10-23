@@ -1,0 +1,59 @@
+<h1>How to use it</h1>
+<p>One card per brand on the site, ranked by priority (more products + pricier gear + big-ticket categories = ask first). For each brand you track five asks: image permission, affiliate program, samples, a TikTok/social feature, and spec data. Nothing ever sends without you pressing <b>Approve &amp; send</b>.</p>
+
+<h2>The order that works</h2>
+<h3>Now, before launch</h3>
+<ol>
+  <li><b>Today → Research next 10.</b> Claude searches each brand's site for a published PR, partnerships or affiliate email, their contact form, affiliate network, and parent company. It never guesses addresses. About 5 to 10 cents per brand.</li>
+  <li><b>Open a brand → Write email.</b> First email: image permission + spec data, or image permission + affiliate question. Two asks max.</li>
+  <li><b>No inbox yet?</b> Press <b>Copy</b>, send it through their contact form (or any inbox you choose), then <b>I sent it myself</b>. The brand moves to contacted and gets a follow-up date.</li>
+  <li><b>Samples and TikTok</b> are easy yeses pre-launch. Traffic numbers aren't needed for those.</li>
+</ol>
+<h3>At launch</h3>
+<ol>
+  <li>Site on its real domain with an <b>affiliate disclosure</b>, <b>privacy policy</b>, and real content. Affiliate networks review your site before approving, and a "coming soon" site usually gets declined.</li>
+  <li>Join the networks in the <b>Affiliates</b> tab: Impact, Awin (includes ShareASale), CJ, AvantLink, Rakuten, Amazon Associates. One network account unlocks many brands.</li>
+  <li>Then apply to each brand's program inside its network and log it (<b>Applied on affiliate network</b>).</li>
+  <li>Update <b>Settings → About the site</b> so emails stop saying "launching soon".</li>
+</ol>
+<h3>Store brands</h3>
+<p>Brands marked <b>store brand</b> (up&amp;up, Parent's Choice, IKEA, Crate &amp; Kids, Pottery Barn Kids) belong to a retailer. You won't get a brand team; the retailer's own affiliate program is the way in (Target and Walmart run theirs through Impact).</p>
+
+<h2>Image permission</h2>
+<p>Product photos are copyrighted. Two ways to use them legally:</p>
+<ul>
+  <li><b>Written permission from the brand.</b> An email saying which images, where, and any credit line. The day they say yes, open the brand → <b>Log permission</b> and paste their exact words. If their reply is vague ("sure!"), use <b>Write an answer</b>: Claude confirms the terms back to them in one sentence so you have a clear record.</li>
+  <li><b>Affiliate network feeds.</b> Once you're approved in a brand's program, the network's product feed and creatives usually come with permission to use those images for promoting the products. Read each program's terms.</li>
+</ul>
+<p>Only use a brand's images while the <b>Image rights</b> tab shows them active. If a brand takes it back, press <b>They took it back</b> and pull the images. Export the log now and then and keep it with the original emails. This isn't legal advice; a lawyer can review your standard wording once.</p>
+
+<h2>Rules that keep you out of trouble</h2>
+<ul>
+  <li>Never trade placement, scores, or "best" rankings for anything. The emails say comparisons stay independent.</li>
+  <li>Free samples and affiliate links must be disclosed (FTC). Say "gifted" or "#ad" in TikToks of free products, and keep the affiliate disclosure on every page.</li>
+  <li>Every email includes your mailing address and an unsubscribe line (CAN-SPAM). Sending stays off until the address is set.</li>
+  <li>"Unsubscribe" or "remove me" replies put the brand on do-not-contact forever. Bounced addresses get cleared so you can find a new contact.</li>
+  <li>Start with a daily limit around 15 on a new domain. A new inbox that blasts email lands in spam.</li>
+</ul>
+
+<h2>Turning on sending (once the domain and LLC exist)</h2>
+<ol>
+  <li>Create the inbox on the new domain (Google Workspace, e.g. hello@yourdomain.com).</li>
+  <li>In Google Admin, turn on DKIM. Add SPF (<code>v=spf1 include:_spf.google.com ~all</code>) and DMARC (<code>_dmarc</code> → <code>v=DMARC1; p=none; rua=mailto:hello@yourdomain.com</code>) to the domain's DNS.</li>
+  <li>console.cloud.google.com, signed in as the new inbox → new project → enable <b>Gmail API</b> → OAuth consent screen <b>Internal</b> → Credentials → OAuth client ID → <b>Web application</b> → Authorized redirect URI <code>https://brands.thecannizzos.com/oauth/callback</code>.</li>
+  <li>App → Settings: sending address, mailing address, paste the Client ID and secret → <b>Connect Gmail</b> → sign in as the new inbox.</li>
+</ol>
+
+<h2>Replies</h2>
+<p><b>If the inbox is Google Workspace and Gmail is connected</b>, the app reads replies to its own emails every hour by itself. Nothing else to set up.</p>
+<p><b>Forwarding</b> covers everything else: brands answering a contact form, replies to emails you sent by hand, or an inbox that isn't Gmail. Cloudflare Email Routing hands each message to this app, which files it on the right brand (by thread, contact email, then the brand's domain) and forwards a copy to you.</p>
+<ol>
+  <li>The domain must use Cloudflare DNS. Cloudflare → the domain → <b>Email → Email Routing</b> → enable.</li>
+  <li><b>Destination addresses</b> → add and verify the inbox you want copies in.</li>
+  <li><b>Routing rules</b> → custom address → action <b>Send to a Worker</b> → <code>brands</code>.</li>
+  <li>App → Settings → <b>Forward incoming mail to</b> = that verified inbox.</li>
+</ol>
+<p>A domain's mail goes to one place. If Google Workspace runs the inbox, Google owns the domain's mail, so put the Cloudflare route on a subdomain instead (e.g. <code>replies@in.yourdomain.com</code>) and add a Gmail filter that auto-forwards brand mail there. Mail the app can't match lands in <b>Replies → Unmatched</b> for you to file.</p>
+
+<h2>Updating the product list</h2>
+<p>Settings → <b>Import CSV</b> with the same columns (Section, Type, Brand, Product, Model, List price (USD), Status, Past recall, Maker page, Site page). New brands get added and ranked; existing brands keep their contacts, notes, emails and permissions.</p>
