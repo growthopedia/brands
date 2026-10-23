@@ -122,3 +122,48 @@ export async function sentToday(env) {
 export async function logActivity(env, brandId, kind, note) {
   await env.DB.prepare(`INSERT INTO activity (brand_id, kind, note) VALUES (?, ?, ?)`).bind(brandId, kind, note || null).run();
 }
+
+// ---------- reply odds: how likely a brand is to answer (0-100, an estimate) ----------
+// Small and mid-size brands answer far more often than big corporate brands. A published partnerships or
+// affiliate email beats a press inbox, which beats a general inbox or a contact form. Brands that already
+// run an affiliate program are actively looking for publishers. Research sharpens the estimate.
+const CORPORATE = ['graco', 'baby jogger', 'nuk', 'maxi-cosi', 'safety 1st', 'quinny', 'chicco', 'evenflo', 'huggies', 'pampers', 'luvs',
+  'similac', 'enfamil', 'gerber', 'philips avent', 'fisher-price', "johnson's", 'aveeno', 'desitin', 'playtex', 'tommee tippee', 'ingenuity',
+  'summer infant', 'bright starts', 'baby einstein', 'medela', 'lansinoh', 'britax', 'boppy', 'carter\'s', 'munchkin', 'delta children'];
+const SHARED_INBOX = /^(info|hello|hi|contact|support|help|customerservice|care|service|sales|team)@/;
+
+export function replyOdds(b) {
+  if (['replied', 'partner', 'declined', 'do_not_contact'].includes(b.status)) return null;
+  let s = 45;
+  if (b.kind === 'store_brand') s -= 25;
+  const n = b.product_count || 0;
+  s += n <= 2 ? 12 : n <= 5 ? 8 : n <= 15 ? 3 : n <= 30 ? -3 : -10;
+  const nm = String(b.name || '').toLowerCase();
+  if (CORPORATE.some((c) => new RegExp(`(^|[^a-z])${c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^a-z]|$)`).test(nm))) s -= 15; // includes sub-brands like "babyGap by Delta Children"
+  const r = parseJ(b.research, null);
+  const email = String(b.contact_email || '').toLowerCase();
+  const type = String(r?.email_type || b.contact_role || '').toLowerCase();
+  if (email) {
+    if (/partner|affiliate|influenc|collab/.test(type) || /^(partner|affiliate|influenc|collab)/.test(email)) s += 25;
+    else if (/press|pr\b|media|marketing/.test(type) || /^(press|pr|media|marketing)@/.test(email)) s += 15;
+    else if (SHARED_INBOX.test(email)) s += 5;
+    else s += 18; // a person's own address
+  } else if (b.contact_url || b.instagram) {
+    s += 2;
+  } else if (b.researched_at) {
+    s -= 10; // looked and found no way in
+  }
+  if (b.affiliate_status === 'found' || b.affiliate_status === 'applied' || b.affiliate_status === 'approved') s += 10;
+  if (b.affiliate_status === 'no_program') s -= 3;
+  if (r?.parent_company && !String(r.parent_company).toLowerCase().includes(String(b.name || '').toLowerCase())) s -= 5;
+  if (b.status === 'contacted') s -= 5; // already asked once, no answer yet
+  return Math.max(3, Math.min(97, Math.round(s)));
+}
+
+export async function refreshOdds(env, id) {
+  const rows = id
+    ? await all(env, `SELECT * FROM brands WHERE id=?`, id)
+    : await all(env, `SELECT id, name, kind, status, product_count, contact_email, contact_role, contact_url, instagram, research, researched_at, affiliate_status FROM brands`);
+  const stmts = rows.map((b) => env.DB.prepare(`UPDATE brands SET reply_odds=? WHERE id=?`).bind(replyOdds(b), b.id));
+  for (let i = 0; i < stmts.length; i += 200) await env.DB.batch(stmts.slice(i, i + 200));
+}

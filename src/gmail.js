@@ -1,5 +1,5 @@
 // Gmail: send approved emails and pick up replies, bounces and opt-outs.
-import { fail, first, all, setMeta, setMetaStmt, getMeta, cfg, EMAIL_RE, emailIn, sentToday, logActivity } from './util.js';
+import { fail, first, all, setMeta, setMetaStmt, getMeta, cfg, EMAIL_RE, emailIn, sentToday, logActivity, refreshOdds } from './util.js';
 
 const GMAIL = 'https://gmail.googleapis.com/gmail/v1/users/me';
 let tokenCache = { token: null, exp: 0 };
@@ -256,6 +256,7 @@ export async function applyReplyEffects(env, brandId, kind, fromEmail) {
       '. Find a new contact.', contact_email=NULL, status = CASE WHEN status='contacted' THEN 'research' ELSE status END WHERE id=?`).bind(r.brandId));
   }
   if (stmts.length) await env.DB.batch(stmts);
+  await refreshOdds(env, brandId);
 }
 
 export async function checkReplies(env) {

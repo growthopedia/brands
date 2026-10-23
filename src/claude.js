@@ -1,5 +1,5 @@
 // Claude in the app: research a brand on the web, write the email, rewrite it from feedback, answer a reply.
-import { fail, first, all, cfg, setMeta, parseJ, nodash, EMAIL_RE, logActivity } from './util.js';
+import { fail, first, all, cfg, setMeta, parseJ, nodash, EMAIL_RE, logActivity, refreshOdds } from './util.js';
 
 const API = 'https://api.anthropic.com/v1/messages';
 const WRITE_MODEL = (env) => env.WRITE_MODEL || 'claude-sonnet-5-5';
@@ -148,6 +148,7 @@ export async function researchBrand(env, id) {
   if (email && !(await first(env, `SELECT 1 FROM contacts WHERE brand_id=? AND lower(email)=?`, id, email)))
     await env.DB.prepare(`INSERT INTO contacts (brand_id, name, email, role, note) VALUES (?, ?, ?, ?, ?)`)
       .bind(id, out.contact_name || null, email, (String(out.contact_role || '').length <= 30 ? out.contact_role : null) || out.email_type || null, out.email_source ? `Found at ${out.email_source}` : 'Found by Claude').run();
+  await refreshOdds(env, id);
   await logActivity(env, id, 'research', `Claude researched (${searches} searches)${email ? `, found ${email}` : ', no email published'}`);
   return { ok: true, research: out, foundEmail: email };
 }

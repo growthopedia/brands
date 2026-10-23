@@ -1,7 +1,7 @@
 # Baby Bodega brand outreach
 
 Asks baby gear brands for **image permission, affiliate access, samples, TikTok features and spec data**, and keeps the
-written record of every yes. One card per brand on the site, ranked by who's most worth asking first.
+written record of every yes. One card per brand on the site, ranked by how likely each brand is to reply, then by value.
 
 - **App:** https://brands.thecannizzos.com (behind Cloudflare Access)
 - **How to use it:** the **Guide** tab in the app (`src/guide.html`)

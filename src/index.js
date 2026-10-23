@@ -6,6 +6,7 @@ import GUIDE from './guide.html';
 import ICON_SVG from './icon.svg';
 import SCHEMA from '../schema.sql';
 import SEED from './seed.json';
+import { refreshOdds } from './util.js';
 import { fail, all, first, json, csvResponse, cfg, saveSettings, setMeta, getMeta, parseJ, domainOf, EMAIL_RE, sentToday, logActivity } from './util.js';
 import { sendMessage, checkReplies, gmailCreds, saveGmailClient, disconnectGmail, oauthStart, oauthCallback, sendBlocker,
   markAsked, recordReply, applyReplyEffects, classify, signature } from './gmail.js';
@@ -17,6 +18,13 @@ async function ensureSchema(env) {
   if (schemaReady) return;
   const statements = SCHEMA.split('\n').map((l) => l.replace(/--.*$/, '')).join('\n').split(';').map((s) => s.trim()).filter(Boolean);
   await env.DB.batch(statements.map((s) => env.DB.prepare(s)));
+  // Columns added after launch.
+  const cols = (await all(env, `PRAGMA table_info(brands)`)).map((c) => c.name);
+  if (!cols.includes('reply_odds')) {
+    await env.DB.prepare(`ALTER TABLE brands ADD COLUMN reply_odds INTEGER`).run();
+    await env.DB.prepare(`CREATE INDEX IF NOT EXISTS brands_odds ON brands(reply_odds)`).run();
+    await refreshOdds(env);
+  }
   schemaReady = true;
 }
 
@@ -165,9 +173,9 @@ async function today(env) {
         ORDER BY r.received_at DESC LIMIT 20`),
     all(env, `SELECT id, name, status, follow_up_on, follow_up_note, contact_email, contact_url FROM brands
         WHERE follow_up_on IS NOT NULL AND follow_up_on <= ? AND status NOT IN ('do_not_contact','declined','partner') ORDER BY follow_up_on LIMIT 25`, d),
-    all(env, `SELECT id, name, score, product_count, sections, status, contact_email, contact_url, kind, researched_at FROM brands b
+    all(env, `SELECT id, name, score, reply_odds, product_count, max_price, domain, sections, status, contact_email, contact_url, kind, researched_at FROM brands b
         WHERE status IN ('research','ready') AND NOT EXISTS (SELECT 1 FROM messages m WHERE m.brand_id=b.id AND m.status!='skipped')
-        ORDER BY status='ready' DESC, score DESC, product_count DESC LIMIT 10`),
+        ORDER BY reply_odds DESC, score DESC LIMIT 10`),
     first(env, `SELECT COUNT(*) n FROM messages WHERE status='draft'`),
     first(env, `SELECT COUNT(*) n FROM replies WHERE brand_id IS NULL AND kind IN ('reply','optout')`),
   ]);
@@ -248,6 +256,7 @@ async function finishImport(env) {
   }
   for (let i = 0; i < stmts.length; i += 200) await env.DB.batch(stmts.slice(i, i + 200));
   await scoreBrands(env);
+  await refreshOdds(env);
   await setMeta(env, 'last_import', new Date().toISOString());
   const t = await first(env, `SELECT COUNT(*) b, SUM(product_count) p FROM brands`);
   return { ok: true, brands: t.b, products: t.p };
@@ -294,13 +303,13 @@ async function listBrands(env, url) {
     where.push(`(name LIKE ? OR domain LIKE ? OR contact_email LIKE ? OR notes LIKE ? OR EXISTS (SELECT 1 FROM products x WHERE x.brand_id=b.id AND x.name LIKE ?))`);
     params.push(q, q, q, q, q);
   }
-  const sort = { score: 'score DESC, product_count DESC', name: 'name COLLATE NOCASE', products: 'product_count DESC', price: 'max_price IS NULL, max_price DESC',
-    updated: 'updated_at DESC', follow_up: 'follow_up_on IS NULL, follow_up_on' }[p.get('sort')] || 'score DESC, product_count DESC';
+  const sort = { odds: 'reply_odds IS NULL, reply_odds DESC, score DESC', score: 'score DESC, product_count DESC', name: 'name COLLATE NOCASE', products: 'product_count DESC', price: 'max_price IS NULL, max_price DESC',
+    updated: 'updated_at DESC', follow_up: 'follow_up_on IS NULL, follow_up_on' }[p.get('sort')] || 'reply_odds IS NULL, reply_odds DESC, score DESC';
   // Name matches first when searching.
   const order = p.get('q') ? `(name LIKE ?) DESC, ${sort}` : sort;
   if (p.get('q')) params.push(`%${p.get('q')}%`);
   return all(env, `SELECT id, name, domain, website, kind, sections, product_count, max_price, has_recall, score, status, contact_name, contact_email,
-      contact_url, image_status, affiliate_status, affiliate_network, sample_status, collab_status, feed_status, researched_at, follow_up_on, last_contacted_at
+      contact_url, reply_odds, image_status, affiliate_status, affiliate_network, sample_status, collab_status, feed_status, researched_at, follow_up_on, last_contacted_at
       FROM brands b ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY ${order} LIMIT 1000`, ...params);
 }
 
@@ -356,6 +365,7 @@ async function updateBrand(env, id, body) {
     if (brand.contact_email) await env.DB.prepare(`INSERT OR IGNORE INTO suppression (email, domain, reason) VALUES (?, NULL, 'manual')`).bind(brand.contact_email.toLowerCase()).run();
     await env.DB.prepare(`UPDATE messages SET status='skipped' WHERE brand_id=? AND status='draft'`).bind(id).run();
   }
+  await refreshOdds(env, id);
   if (changed.length) await logActivity(env, id, 'update', changed.join(', '));
   return { ok: true };
 }
@@ -374,7 +384,7 @@ async function addBrand(env, body) {
 async function researchCandidates(env, url) {
   const n = Math.min(25, Number(url.searchParams.get('n')) || 10);
   return all(env, `SELECT id, name FROM brands WHERE researched_at IS NULL AND status NOT IN ('do_not_contact','skipped','declined','partner')
-    ORDER BY score DESC, product_count DESC LIMIT ?`, n);
+    ORDER BY reply_odds DESC, score DESC LIMIT ?`, n);
 }
 
 // ---------- contacts, activity, permissions, replies ----------

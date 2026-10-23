@@ -71,7 +71,9 @@ label.f+input,label.f+select,label.f+textarea{width:100%}
 .tag.warn{background:var(--sun-soft);border-color:transparent;color:var(--sun-ink)}
 .tag.bad{background:var(--bad-soft);border-color:transparent;color:var(--bad)}
 .tag.info{background:var(--info-soft);border-color:transparent;color:var(--info)}
-.score{font:600 15px/1 var(--head);width:44px;height:44px;flex:none;display:grid;place-items:center;border-radius:50%;background:var(--sky);color:var(--rain-dark)}
+.odds-good{color:var(--rain-dark)}.odds-info{color:var(--info)}.odds-warn{color:var(--sun-ink)}
+.score{font:600 14px/1 var(--head);width:44px;height:44px;flex:none;display:grid;place-items:center;border-radius:50%;background:var(--sky);color:var(--rain-dark)}
+.score.good{background:var(--rain-soft);color:var(--rain-dark)}.score.info{background:var(--info-soft);color:var(--info)}.score.warn{background:var(--sun-soft);color:var(--sun-ink)}
 .filters{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px;margin-bottom:12px}
 .filters input[type=search]{grid-column:span 2}
 .filters>*{min-width:0;width:100%}
@@ -201,7 +203,7 @@ const q = encodeURIComponent;
 const dlg = $('#dlg');
 let S = {}; // summary
 let FILTERS = { sections: [], statuses: [], asks: {} };
-const bf = { q: '', status: '', section: '', contact: '', image_status: '', affiliate_status: '', kind: '', researched: '', sort: 'score', hide_done: '1' };
+const bf = { q: '', status: '', section: '', contact: '', image_status: '', affiliate_status: '', kind: '', researched: '', sort: 'odds', hide_done: '1' };
 let replyState = 'open', currentBrand = null;
 
 async function api(path, opts = {}) {
@@ -317,8 +319,8 @@ async function loadToday() {
     ${t.followups.length ? `<div class="sec"><h3>Follow-ups due</h3></div>${t.followups.map((b) => `<div class="card brand" data-brand="${b.id}"><div class="body">
       <div class="name">${esc(b.name)}</div><div class="small ${b.follow_up_on <= t.date ? 'muted' : ''}">Due ${esc(b.follow_up_on)}${b.follow_up_note ? ': ' + esc(b.follow_up_note) : ''}</div>
       <div class="row" style="margin-top:6px">${tag(b.status)}${b.contact_email ? `<span class="small muted">${esc(b.contact_email)}</span>` : ''}</div></div></div>`).join('')}` : ''}
-    <div class="sec"><h3 style="flex:1">Next up</h3>${S.claude.set ? `<button class="btn sm" onclick="researchBatch(this, 10)">Research next 10 with Claude</button>` : ''}</div>
-    <p class="small muted" style="margin-top:-4px">Highest-priority brands you haven't written to yet. Research finds their PR or partnerships email and affiliate program.</p>
+    <div class="sec"><h3 style="flex:1">Next up</h3>${S.claude.set ? `<button class="btn sm" onclick="researchBatch(this, 10)">Research the next 10</button>` : ''}</div>
+    <p class="small muted" style="margin-top:-4px">Brands most likely to answer that you haven't written to yet. The % is an estimate: smaller brands, partnerships emails and brands with affiliate programs reply more. Research sharpens it.</p>
     <div id="batchProg"></div>
     ${t.nextUp.map(brandCard).join('') || '<div class="empty">Every brand has a draft or has been contacted.</div>'}`;
 }
@@ -344,11 +346,17 @@ async function researchBatch(btn, n) {
 function askTags(b) {
   return Object.entries(ASK_LABEL).filter(([k]) => b[k] && b[k] !== 'none').map(([k, l]) => tag(b[k], `${l}: ${label(b[k])}`)).join('');
 }
+const oddsWord = (o) => o == null ? '' : o >= 65 ? 'Likely to reply' : o >= 45 ? 'Might reply' : 'Long shot';
+const oddsTone = (o) => o >= 65 ? 'good' : o >= 45 ? 'info' : 'warn';
+function oddsCircle(b) {
+  if (b.reply_odds == null) return `<div class="score" title="Already replied or closed">✓</div>`;
+  return `<div class="score ${oddsTone(b.reply_odds)}" title="Estimated chance they reply: ${b.reply_odds}%. Research sharpens this.">${b.reply_odds}%</div>`;
+}
 function brandCard(b) {
   const secs = parse(b.sections, []);
-  return `<div class="card brand" data-brand="${b.id}"><div class="score" title="Priority">${b.score ?? ''}</div><div class="body">
+  return `<div class="card brand" data-brand="${b.id}">${oddsCircle(b)}<div class="body">
     <div class="row"><span class="name" style="flex:1">${esc(b.name)}</span>${tag(b.status)}</div>
-    <div class="small muted">${b.product_count} product${b.product_count === 1 ? '' : 's'}${b.max_price ? ` · up to ${money(b.max_price)}` : ''}${b.domain ? ' · ' + esc(b.domain) : ''}${b.kind === 'store_brand' ? ' · store brand' : ''}</div>
+    <div class="small muted">${b.reply_odds != null ? `<b class="odds-${oddsTone(b.reply_odds)}">${oddsWord(b.reply_odds)}</b> · value ${b.score} · ` : ''}${b.product_count} product${b.product_count === 1 ? '' : 's'}${b.max_price ? ` · up to ${money(b.max_price)}` : ''}${b.domain ? ' · ' + esc(b.domain) : ''}${b.kind === 'store_brand' ? ' · store brand' : ''}</div>
     <div style="margin-top:4px">${secs.slice(0, 4).map((s) => `<span class="tag">${esc(s)}</span>`).join('')}${secs.length > 4 ? `<span class="tag">+${secs.length - 4}</span>` : ''}</div>
     <div class="small" style="margin-top:4px">${b.contact_email ? '✉ ' + esc(b.contact_email) : b.contact_url ? '🔗 Contact form found' : b.researched_at ? '<span class="muted">No email published</span>' : '<span class="muted">Not researched yet</span>'}</div>
     ${askTags(b) ? `<div style="margin-top:4px">${askTags(b)}</div>` : ''}
@@ -373,7 +381,7 @@ async function loadBrands() {
     <select data-f="image_status">${opt('', 'Images: any', bf.image_status)}${FILTERS.asks.image_status.map((s) => opt(s, 'Images: ' + label(s), bf.image_status)).join('')}</select>
     <select data-f="affiliate_status">${opt('', 'Affiliate: any', bf.affiliate_status)}${FILTERS.asks.affiliate_status.map((s) => opt(s, 'Affiliate: ' + label(s), bf.affiliate_status)).join('')}</select>
     <select data-f="kind">${opt('', 'Brands + store brands', bf.kind)}${opt('brand', 'Brands only', bf.kind)}${opt('store_brand', 'Store brands only', bf.kind)}</select>
-    <select data-f="sort">${opt('score', 'Sort: priority', bf.sort)}${opt('products', 'Sort: most products', bf.sort)}${opt('price', 'Sort: priciest', bf.sort)}${opt('name', 'Sort: A to Z', bf.sort)}${opt('updated', 'Sort: recently changed', bf.sort)}${opt('follow_up', 'Sort: follow-up date', bf.sort)}</select>
+    <select data-f="sort">${opt('odds', 'Sort: most likely to reply', bf.sort)}${opt('score', 'Sort: most valuable', bf.sort)}${opt('products', 'Sort: most products', bf.sort)}${opt('price', 'Sort: priciest', bf.sort)}${opt('name', 'Sort: A to Z', bf.sort)}${opt('updated', 'Sort: recently changed', bf.sort)}${opt('follow_up', 'Sort: follow-up date', bf.sort)}</select>
     <label class="chk"><input type="checkbox" data-f="hide_done" ${bf.hide_done === '1' ? 'checked' : ''}> Hide skipped & declined</label>`;
   const p = new URLSearchParams(Object.entries(bf).filter(([, v]) => v));
   const list = await api('/api/brands?' + p);
@@ -439,8 +447,8 @@ async function openBrand(id) {
 
   openDlg(b.name, `
     <div class="row" style="margin-bottom:6px">
-      <span class="score">${b.score}</span>
-      <div style="flex:1;min-width:200px"><div class="small muted">${b.product_count} products${b.max_price ? ' · up to ' + money(b.max_price) : ''}${b.kind === 'store_brand' ? ' · store brand (ask the retailer)' : ''}${b.has_recall ? ' · has a past recall on the site' : ''}</div>
+      ${oddsCircle(b)}
+      <div style="flex:1;min-width:200px"><div class="small muted">${b.reply_odds != null ? '<b>' + oddsWord(b.reply_odds) + '</b> · ' : ''}value ${b.score} · ${b.product_count} products${b.max_price ? ' · up to ' + money(b.max_price) : ''}${b.kind === 'store_brand' ? ' · store brand (ask the retailer)' : ''}${b.has_recall ? ' · has a past recall on the site' : ''}</div>
       <div>${parse(b.sections, []).map((s) => `<span class="tag">${esc(s)}</span>`).join('')}</div></div>
     </div>
     <div class="grid3">
