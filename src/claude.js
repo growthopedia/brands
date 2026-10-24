@@ -2,10 +2,10 @@
 import { fail, first, all, cfg, setMeta, parseJ, nodash, EMAIL_RE, logActivity, refreshOdds } from './util.js';
 
 const API = 'https://api.anthropic.com/v1/messages';
-const WRITE_MODEL = (env) => env.WRITE_MODEL || 'claude-sonnet-5-5';
-const RESEARCH_MODEL = (env) => env.RESEARCH_MODEL || 'claude-sonnet-5-5';
+export const WRITE_MODEL = (env) => env.WRITE_MODEL || 'claude-sonnet-5-5';
+export const RESEARCH_MODEL = (env) => env.RESEARCH_MODEL || 'claude-sonnet-5-5';
 // Sonnet/Opus think before answering by default, which can use up a short reply.
-const noThink = (model) => (/sonnet|opus/.test(model) ? { thinking: { type: 'between_tools' } } : {});
+export const noThink = (model) => (/sonnet|opus/.test(model) ? { thinking: { type: 'between_tools' } } : {});
 
 export async function claudeKey(env) {
   const fromEnv = (env.ANTHROPIC_API_KEY || '').trim();
@@ -27,7 +27,7 @@ export async function saveClaudeKey(env, body) {
   return { ok: true };
 }
 
-async function call(env, payload) {
+export async function call(env, payload) {
   const key = await claudeKey(env);
   if (!key) throw fail('Add your Claude key in Settings first.', 503);
   const r = await fetch(API, {
@@ -40,8 +40,8 @@ async function call(env, payload) {
   if (!r.ok) throw fail(`Claude error: ${data.error?.message || r.status}`, 502);
   return data;
 }
-const textOf = (data) => (data.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('');
-function jsonOut(text) {
+export const textOf = (data) => (data.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('');
+export function jsonOut(text) {
   const m = text.match(/\{[\s\S]*\}/);
   try { return JSON.parse(m ? m[0] : ''); } catch { return null; }
 }
@@ -278,7 +278,7 @@ export async function draftAnswer(env, replyId, body) {
   const s = await cfg(env);
   const model = WRITE_MODEL(env);
   const data = await call(env, { model, max_tokens: 1200, ...noThink(model),
-    system: `You help Jen Cannizzo answer a brand that replied to her ${s.site_name} partnership email. Voice: warm, brief, plain, no em or en dashes,
+    system: `You write Jen Cannizzo's answer to a brand that replied to her ${s.site_name} partnership email. Write AS Jen, in first person ("I"), never about her in third person. Voice: warm, brief, plain, no em or en dashes,
 no signature. ABOUT THE SITE (only facts you may use): ${s.about}
 Answer exactly what they asked. If they granted image permission, thank them and confirm the terms back in one sentence so there's a clear
 written record (what images, where, credit line). If they asked for traffic numbers, say honestly the site is launching soon and offer to

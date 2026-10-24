@@ -43,6 +43,7 @@ nav{display:flex;gap:2px;padding:0 10px;max-width:1200px;margin:0 auto;overflow-
 nav button{border:0;background:none;color:var(--soft);padding:10px 12px;font:700 13px/1.2 var(--body);border-bottom:3px solid transparent;cursor:pointer;white-space:nowrap;position:relative}
 nav button.on{color:var(--ink);border-color:var(--rain)}
 nav button svg{display:none}
+nav button.more-btn{display:none}
 .count{font-size:11px;background:var(--sun);color:var(--sun-ink);border-radius:99px;padding:1px 7px;margin-left:4px;font-weight:700}
 main{max-width:1200px;margin:0 auto;padding:20px 16px 60px}
 .card{background:var(--cloud);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:18px;margin-bottom:14px}
@@ -147,6 +148,7 @@ dialog::backdrop{background:rgba(38,64,58,.4)}
   nav button.on{border-top-color:var(--rain)}
   nav button svg{display:block;width:22px;height:22px}
   nav button.more{display:none}
+  nav button.more-sm{display:none}
   .count{position:absolute;top:2px;right:calc(50% - 22px);margin:0;font-size:10px;padding:0 5px}
   main{padding:14px 12px 24px}
   .card{padding:14px}
@@ -159,6 +161,11 @@ dialog::backdrop{background:rgba(38,64,58,.4)}
   .rewrite{flex-direction:column}
   .toast{bottom:calc(84px + env(safe-area-inset-bottom))}
   .kpis{grid-template-columns:1fr 1fr}
+  .kpis.tight{grid-template-columns:repeat(3,1fr);gap:8px}
+  .kpis.tight .card{padding:10px;margin:0}
+  .kpis.tight .kpi .v{font-size:22px}
+  .kpis.tight .kpi .l{font-size:12px}
+  nav button.more-btn{display:flex}
 }
 </style>
 </head>
@@ -175,10 +182,12 @@ dialog::backdrop{background:rgba(38,64,58,.4)}
     <button data-tab="brands"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>Brands</button>
     <button data-tab="drafts"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/></svg>Drafts<span class="count" id="dCount" hidden></span></button>
     <button data-tab="replies"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Replies<span class="count" id="rCount" hidden></span></button>
-    <button data-tab="affiliates"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>Affiliates</button>
+    <button data-tab="affiliates" class="more-sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>Affiliates</button>
+    <button data-tab="links"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2l2.4 4.9 5.4.8-3.9 3.8.9 5.4L12 14.4 7.2 17l.9-5.4L4.2 7.7l5.4-.8z"/><path d="M8 21h8"/></svg>Links</button>
     <button data-tab="permissions" class="more">Image rights</button>
     <button data-tab="stats" class="more">Results</button>
     <button data-tab="guide" class="more">Guide</button>
+    <button class="more-btn" onclick="moreMenu()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg>More</button>
   </nav>
 </header>
 <main>
@@ -188,6 +197,7 @@ dialog::backdrop{background:rgba(38,64,58,.4)}
   <section id="tab-drafts" hidden></section>
   <section id="tab-replies" hidden></section>
   <section id="tab-affiliates" hidden></section>
+  <section id="tab-links" hidden></section>
   <section id="tab-permissions" hidden></section>
   <section id="tab-stats" hidden></section>
   <section id="tab-guide" class="guide" hidden></section>
@@ -204,7 +214,9 @@ const dlg = $('#dlg');
 let S = {}; // summary
 let FILTERS = { sections: [], statuses: [], asks: {} };
 const bf = { q: '', status: '', section: '', contact: '', image_status: '', affiliate_status: '', kind: '', researched: '', sort: 'odds', hide_done: '1' };
-let replyState = 'open', currentBrand = null;
+let replyState = 'open', currentBrand = null, currentProspect = null;
+let TACTIC_INFO = {}, LINKS = { pages: [], hosts: [] };
+const lf = { view: 'prospects', q: '', status: '', tactic: '', contact: '', sort: 'odds' };
 
 async function api(path, opts = {}) {
   const r = await fetch(path, { ...opts, headers: { 'content-type': 'application/json', ...(opts.headers || {}) } });
@@ -227,7 +239,7 @@ const ASK_NAME = { images: 'Image permission', affiliate: 'Affiliate program', s
 const NETWORKS = { impact: 'Impact', awin: 'Awin / ShareASale', cj: 'CJ', avantlink: 'AvantLink', rakuten: 'Rakuten', partnerize: 'Partnerize', amazon: 'Amazon only', in_house: 'In-house', other: 'Other' };
 
 // ---------- tabs ----------
-const LOADERS = { today: loadToday, brands: loadBrands, drafts: loadDrafts, replies: loadReplies, affiliates: loadAffiliates, permissions: loadPermissions, stats: loadStats, guide: loadGuide };
+const LOADERS = { today: loadToday, brands: loadBrands, drafts: loadDrafts, replies: loadReplies, affiliates: loadAffiliates, links: loadLinks, permissions: loadPermissions, stats: loadStats, guide: loadGuide };
 function showTab(name) {
   if (!LOADERS[name]) name = 'today';
   $$('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.tab === name));
@@ -236,6 +248,10 @@ function showTab(name) {
   LOADERS[name]().catch((e) => toast(e.message));
 }
 $('#tabs').addEventListener('click', (e) => { const b = e.target.closest('button[data-tab]'); if (b) showTab(b.dataset.tab); });
+function moreMenu() {
+  openDlg('More', [['affiliates', 'Affiliate programs'], ['permissions', 'Image rights'], ['stats', 'Results'], ['guide', 'Guide']]
+    .map(([t, l]) => `<button class="btn ghost" style="width:100%;justify-content:center;margin-bottom:10px" onclick="dlg.close();showTab('${t}')">${l}</button>`).join(''));
+}
 
 async function refreshSummary() {
   S = await api('/api/summary');
@@ -269,14 +285,22 @@ async function loadSeed(btn) {
     await refreshSummary(); loadToday();
   } catch (e) { toast(e.message); btn.disabled = false; }
 }
-function parseCSV(text) {
+// Reads CSV or TSV, UTF-8 or UTF-16 (Ahrefs exports are UTF-16 with tabs).
+async function readTable(file) {
+  const buf = new Uint8Array(await file.arrayBuffer());
+  const text = buf[0] === 0xff && buf[1] === 0xfe ? new TextDecoder('utf-16le').decode(buf)
+    : buf[0] === 0xfe && buf[1] === 0xff ? new TextDecoder('utf-16be').decode(buf) : new TextDecoder('utf-8').decode(buf);
+  const line = text.replace(/^\uFEFF/, '').split(/\r?\n/)[0] || '';
+  return parseCSV(text, (line.match(/\t/g) || []).length > (line.match(/,/g) || []).length ? '\t' : ',');
+}
+function parseCSV(text, delim = ',') {
   const rows = []; let row = [], f = '', i = 0, inQ = false;
-  text = text.replace(/^﻿/, '');
+  text = text.replace(/^\uFEFF/, '');
   while (i < text.length) {
     const c = text[i];
     if (inQ) { if (c === '"') { if (text[i + 1] === '"') { f += '"'; i++; } else inQ = false; } else f += c; }
     else if (c === '"') inQ = true;
-    else if (c === ',') { row.push(f); f = ''; }
+    else if (c === delim) { row.push(f); f = ''; }
     else if (c === '\n' || c === '\r') { if (c === '\r' && text[i + 1] === '\n') i++; row.push(f); f = ''; if (row.some((x) => x !== '')) rows.push(row); row = []; }
     else f += c;
     i++;
@@ -313,12 +337,14 @@ async function loadToday() {
       <p class="small muted" style="margin-bottom:0">Until the inbox exists, everything else works: research, drafts, Copy, and "I sent it myself".</p></div>` : ''}
     <div class="kpis">
       ${kpi(t.drafts, 'Drafts to review', 'drafts')}${kpi(t.replies.length, 'Replies to answer', 'replies')}
-      ${kpi(t.followups.length, 'Follow-ups due', '')}${kpi(t.unmatched, 'Unmatched mail', 'replies', 'unmatched')}
+      ${kpi(t.followups.length + t.linkFollowups.length, 'Follow-ups due', '')}${kpi(t.unmatched, 'Unmatched mail', 'replies', 'unmatched')}
     </div>
     ${t.replies.length ? `<div class="sec"><h3>Replies to answer</h3></div>${t.replies.map(replyMini).join('')}` : ''}
     ${t.followups.length ? `<div class="sec"><h3>Follow-ups due</h3></div>${t.followups.map((b) => `<div class="card brand" data-brand="${b.id}"><div class="body">
       <div class="name">${esc(b.name)}</div><div class="small ${b.follow_up_on <= t.date ? 'muted' : ''}">Due ${esc(b.follow_up_on)}${b.follow_up_note ? ': ' + esc(b.follow_up_note) : ''}</div>
       <div class="row" style="margin-top:6px">${tag(b.status)}${b.contact_email ? `<span class="small muted">${esc(b.contact_email)}</span>` : ''}</div></div></div>`).join('')}` : ''}
+    ${t.linkFollowups.length ? `<div class="sec"><h3>Link follow-ups due</h3></div>${t.linkFollowups.map((p) => `<div class="card brand" data-prospect="${p.id}"><div class="body">
+      <div class="name">${esc(p.name)}</div><div class="small muted">Due ${esc(p.follow_up_on)}</div><div class="row" style="margin-top:6px">${tag(p.status)}</div></div></div>`).join('')}` : ''}
     <div class="sec"><h3 style="flex:1">Next up</h3>${S.claude.set ? `<button class="btn sm" onclick="researchBatch(this, 10)">Research the next 10</button>` : ''}</div>
     <p class="small muted" style="margin-top:-4px">Brands most likely to answer that you haven't written to yet. The % is an estimate: smaller brands, partnerships emails and brands with affiliate programs reply more. Research sharpens it.</p>
     <div id="batchProg"></div>
@@ -400,6 +426,8 @@ document.addEventListener('change', (e) => {
 document.addEventListener('click', (e) => {
   const c = e.target.closest('[data-brand]');
   if (c && !e.target.closest('a,button,select,input,textarea')) openBrand(Number(c.dataset.brand));
+  const pc = e.target.closest('[data-prospect]');
+  if (pc && !e.target.closest('a,button,select,input,textarea')) openProspect(Number(pc.dataset.prospect));
 });
 
 function addBrandDlg() {
@@ -413,7 +441,7 @@ function addBrandDlg() {
 
 // ---------- BRAND DETAIL ----------
 function openDlg(title, html) { $('#dlgTitle').textContent = title; $('#dlgBody').innerHTML = html; if (!dlg.open) dlg.showModal(); $('#dlgBody').scrollTop = 0; }
-function closeDlg() { dlg.close(); currentBrand = null; const t = $$('#tabs button.on')[0]?.dataset.tab; if (t && t !== 'guide') LOADERS[t]().catch(() => {}); }
+function closeDlg() { dlg.close(); currentBrand = null; currentProspect = null; const t = $$('#tabs button.on')[0]?.dataset.tab; if (t && t !== 'guide') LOADERS[t]().catch(() => {}); }
 dlg.addEventListener('cancel', (e) => { e.preventDefault(); closeDlg(); });
 
 function findLinks(b) {
@@ -552,7 +580,7 @@ async function openBrand(id) {
       ${products.map((p) => `<tr><td>${esc(p.name)}${p.recall ? ' <span class="tag warn">past recall</span>' : ''}${p.status && p.status !== 'current' ? ` <span class="tag">${esc(label(p.status))}</span>` : ''}</td>
         <td class="small muted">${esc(p.type || p.section || '')}</td><td>${money(p.price)}</td>
         <td class="small" style="white-space:nowrap">${p.site_url ? `<a href="${esc(p.site_url)}" target="_blank" rel="noopener">Our page</a>` : ''}${p.maker_url ? ` · <a href="${esc(p.maker_url)}" target="_blank" rel="noopener">Theirs</a>` : ''}</td></tr>`).join('')}</table></div>
-    <div class="row" style="margin-top:18px"><button class="btn sm danger" data-bstatus="skipped">Skip this brand</button><button class="btn sm danger" data-bstatus="do_not_contact">Do not contact</button></div>
+    <div class="row" style="margin-top:18px"><button class="btn sm ghost" id="toLink" title="Adds this brand to Links so you can ask for a link from their site">Ask them for a link</button><button class="btn sm danger" data-bstatus="skipped">Skip this brand</button><button class="btn sm danger" data-bstatus="do_not_contact">Do not contact</button></div>
   `);
   if (draft) $('#brandDraft').innerHTML = draftCard({ ...draft, brand: b.name, contact_url: b.contact_url });
 
@@ -600,6 +628,9 @@ async function openBrand(id) {
     const note = prompt('What did they say? Their images need to come down.', ''); if (note === null) return;
     try { await post(`/api/permissions/${btn.dataset.revoke}/revoke`, { note }); openBrand(id); } catch (e) { toast(e.message); }
   });
+  $('#toLink').onclick = async () => {
+    try { const r = await post(`/api/brands/${id}/to-link`); toast(r.duplicate ? 'Already in Links' : 'Added to Links'); openProspect(r.id); } catch (e) { toast(e.message); }
+  };
   body.querySelectorAll('[data-bstatus]').forEach((btn) => btn.onclick = async () => {
     if (btn.dataset.bstatus === 'do_not_contact' && !confirm('Never email this brand? Any draft is dropped.')) return;
     try { await post(`/api/brands/${id}`, { status: btn.dataset.bstatus }); closeDlg(); } catch (e) { toast(e.message); }
@@ -609,9 +640,10 @@ async function openBrand(id) {
 // ---------- DRAFTS ----------
 function draftCard(m) {
   const blocked = S.sendBlocker;
-  const kindTag = m.kind === 'followup' ? tag('info', 'Follow-up') : m.kind === 'reply' ? tag('good', 'Answer to their reply') : parse(m.asks, []).map((a) => tag('', ASK_NAME[a] || a)).join('');
+  const kindTag = (m.prospect_id ? tag('info', 'Link pitch' + (m.tactic && TACTIC_INFO[m.tactic] ? ': ' + TACTIC_INFO[m.tactic].name : '')) : '') +
+    (m.kind === 'followup' ? tag('info', 'Follow-up') : m.kind === 'reply' ? tag('good', 'Answer to their reply') : m.prospect_id ? '' : parse(m.asks, []).map((a) => tag('', ASK_NAME[a] || a)).join(''));
   return `<div class="card" data-msg="${m.id}">
-    <div class="row"><b style="flex:1;cursor:pointer" data-brandlink="${m.brand_id}">${esc(m.brand)}</b>${kindTag}</div>
+    <div class="row"><b style="flex:1;cursor:pointer" ${m.prospect_id ? `data-prospectlink="${m.prospect_id}"` : `data-brandlink="${m.brand_id}"`}>${esc(m.brand)}</b>${kindTag}</div>
     <label class="f">To</label><input class="m-to" value="${esc(m.to_email || '')}" placeholder="${m.contact_url ? 'No email: use their contact form, then press I sent it myself' : 'Add their email'}" style="width:100%">
     ${!m.to_email && m.contact_url ? `<div class="small" style="margin-top:4px"><a href="${esc(m.contact_url)}" target="_blank" rel="noopener">Open their contact form</a></div>` : ''}
     <label class="f">Subject</label><input class="m-subj" value="${esc(m.subject)}" style="width:100%">
@@ -647,9 +679,10 @@ document.addEventListener('click', async (e) => {
   const chip = e.target.closest('[data-chip]');
   if (chip) { const card = chip.closest('[data-msg]'); $('.m-fb', card).value = chip.dataset.chip; $('[data-mact=rewrite]', card).click(); return; }
   const bl = e.target.closest('[data-brandlink]'); if (bl) { openBrand(Number(bl.dataset.brandlink)); return; }
+  const pl = e.target.closest('[data-prospectlink]'); if (pl) { openProspect(Number(pl.dataset.prospectlink)); return; }
   const b = e.target.closest('[data-mact]'); if (!b) return;
   const card = b.closest('[data-msg]'), id = card.dataset.msg, act = b.dataset.mact;
-  const after = async () => { await refreshSummary(); if (currentBrand && dlg.open) openBrand(currentBrand); else loadDrafts(); };
+  const after = async () => { await refreshSummary(); if (currentProspect && dlg.open) openProspect(currentProspect); else if (currentBrand && dlg.open) openBrand(currentBrand); else loadDrafts(); };
   try {
     if (act === 'copy') {
       const text = `${$('.m-body', card).value}\n${S.signature}`;
@@ -675,11 +708,11 @@ document.addEventListener('click', async (e) => {
 
 // ---------- REPLIES ----------
 function replyMini(r) {
-  return `<div class="card" data-reply="${r.id}"><div class="row"><b style="flex:1;cursor:pointer" data-brandlink="${r.brand_id}">${esc(r.brand || 'Unmatched')}</b>${tag(r.kind === 'reply' ? 'replied' : r.kind === 'optout' ? 'declined' : 'skipped', label(r.kind))}<span class="small muted">${when(r.received_at)}</span></div>
+  return `<div class="card" data-reply="${r.id}"><div class="row"><b style="flex:1;cursor:pointer" ${r.prospect_id && !r.brand_id ? `data-prospectlink="${r.prospect_id}"` : `data-brandlink="${r.brand_id}"`}>${esc(r.brand || 'Unmatched')}</b>${r.prospect_id && !r.brand_id ? tag('info', 'Links') : ''}${tag(r.kind === 'reply' ? 'replied' : r.kind === 'optout' ? 'declined' : 'skipped', label(r.kind))}<span class="small muted">${when(r.received_at)}</span></div>
     <div class="small muted">${esc(r.from_email || '')}${r.subject ? ' · ' + esc(r.subject) : ''}</div>
     <div style="margin-top:6px;white-space:pre-wrap">${esc(r.snippet || '')}</div>
-    <div class="row" style="margin-top:10px">${r.brand_id && S.claude.set && r.kind === 'reply' ? `<button class="btn sm primary" data-ract="answer">Write an answer</button>` : ''}
-      ${r.brand_id ? `<button class="btn sm ghost" data-brandlink="${r.brand_id}">Open brand</button>` : ''}
+    <div class="row" style="margin-top:10px">${(r.brand_id || r.prospect_id) && S.claude.set && r.kind === 'reply' ? `<button class="btn sm primary" data-ract="answer">Write an answer</button>` : ''}
+      ${r.brand_id ? `<button class="btn sm ghost" data-brandlink="${r.brand_id}">Open brand</button>` : r.prospect_id ? `<button class="btn sm ghost" data-prospectlink="${r.prospect_id}">Open site</button>` : ''}
       <button class="btn sm ghost" data-ract="done">Done</button></div></div>`;
 }
 async function loadReplies() {
@@ -721,6 +754,226 @@ document.addEventListener('click', async (e) => {
     if (!$('#tab-today').hidden) loadToday(); else loadReplies();
   } catch (err) { toast(err.message); b.disabled = false; }
 });
+
+// ---------- LINKS ----------
+const relTag = (r) => !r ? '' : r === 'follow' ? tag('approved', 'follow') : tag('no_program', r);
+function prospectCard(p) {
+  const odds = p.odds == null ? `<div class="score" title="Closed">✓</div>` : `<div class="score ${oddsTone(p.odds)}" title="Estimated chance they answer">${p.odds}%</div>`;
+  return `<div class="card brand" data-prospect="${p.id}">${odds}<div class="body">
+    <div class="row"><span class="name" style="flex:1">${esc(p.name || p.domain)}</span>${tag(p.status)}</div>
+    <div class="small muted">${p.odds != null ? `<b class="odds-${oddsTone(p.odds)}">${oddsWord(p.odds)}</b> · ` : ''}${esc(p.domain)}${p.authority != null ? ' · authority ' + p.authority : ''}</div>
+    <div style="margin-top:4px"><span class="tag info">${esc(TACTIC_INFO[p.tactic]?.name || p.tactic)}</span></div>
+    ${p.page_title ? `<div class="small ellipsis" style="margin-top:4px">${esc(p.page_title)}</div>` : ''}
+    ${p.why ? `<div class="small muted" style="margin-top:2px">${esc(p.why)}</div>` : ''}
+    <div class="small" style="margin-top:4px">${p.contact_email ? '✉ ' + esc(p.contact_email) : p.contact_url ? '🔗 Contact page found' : p.researched_at ? '<span class="muted">No email published</span>' : '<span class="muted">Contact not researched yet</span>'}</div>
+  </div></div>`;
+}
+async function loadLinks() {
+  const el = $('#tab-links');
+  const sum = await api('/api/links/summary');
+  TACTIC_INFO = sum.tacticInfo; LINKS = sum;
+  const ps = sum.prospects, live = sum.links.filter((l) => l.status === 'live').reduce((a, l) => a + l.n, 0);
+  const follow = sum.links.filter((l) => l.status === 'live' && l.rel === 'follow').reduce((a, l) => a + l.n, 0);
+  const lost = sum.lost;
+  const seg = (k, t) => `<button class="btn sm ${lf.view === k ? 'primary' : 'ghost'}" onclick="lf.view='${k}';loadLinks()">${t}</button>`;
+  const opt = (v, txt, cur) => `<option value="${esc(v)}" ${v === cur ? 'selected' : ''}>${esc(txt)}</option>`;
+  el.innerHTML = `<div class="row" style="margin-bottom:10px"><h2 style="flex:1">Links</h2>
+      <button class="btn sm primary" onclick="findDlg()">Find prospects</button><button class="btn sm ghost" onclick="importDlg()">Import list</button><button class="btn sm ghost" onclick="addProspectDlg()">Add one</button></div>
+    ${sum.warning ? `<div class="banner warn"><span>${esc(sum.warning)}</span></div>` : ''}
+    <div class="kpis tight">${[[Object.values(ps).reduce((a, b) => a + b, 0), 'Prospects'], [ps.pitched || 0, 'Pitched'], [ps.replied || 0, 'Replied'], [ps.won || 0, 'Won'],
+      [live, 'Live links'], [follow, 'Followed links'], [lost, 'Lost links']].map(([v, l]) => `<div class="card kpi"><div class="v">${v}</div><div class="l">${l}</div></div>`).join('')}</div>
+    <div class="row" style="margin-bottom:12px">${seg('prospects', 'Prospects')}${seg('won', 'Won links')}</div>
+    <div id="linksBody"></div>`;
+  const body = $('#linksBody');
+  if (lf.view === 'won') {
+    const list = await api('/api/links/won');
+    body.innerHTML = `<div class="card"><div class="row"><input id="newLink" placeholder="Page that links to you, e.g. https://someblog.com/registry-guide" style="flex:1;min-width:220px"><button class="btn" id="newLinkGo">Add & check</button></div>
+      <div class="small muted" style="margin-top:6px">Each link is re-checked about once a day. Counts as yours if it points to ${esc(sum.hosts.join(' or ') || 'the site address in Settings')}.</div></div>
+      ${list.length ? `<div class="card tablewrap"><table><tr><th>Page</th><th>Anchor</th><th>Type</th><th>Status</th><th>Checked</th><th></th></tr>
+      ${list.map((l) => `<tr><td><a href="${esc(l.source_url)}" target="_blank" rel="noopener">${esc(domainName(l.source_url))}</a>${l.prospect_id ? ` <a href="#" class="small" data-prospectlink="${l.prospect_id}">site</a>` : ''}
+          ${l.target_url ? `<div class="small muted ellipsis" style="max-width:280px">→ ${esc(l.target_url)}</div>` : ''}</td>
+        <td class="small">${esc(l.anchor || '')}</td><td>${relTag(l.rel)}</td>
+        <td>${tag(l.status === 'live' ? 'approved' : l.status === 'pending' ? '' : 'declined', l.status)}${l.last_error ? `<div class="small muted">${esc(l.last_error)}</div>` : ''}${l.lost_at ? `<div class="small muted">Lost ${when(l.lost_at)}</div>` : ''}</td>
+        <td class="small muted">${when(l.last_checked_at)}</td>
+        <td style="white-space:nowrap"><button class="btn sm ghost" data-lcheck="${l.id}">Check</button> <button class="btn sm danger" data-ldel="${l.id}">Remove</button></td></tr>`).join('')}</table></div>`
+      : '<div class="empty">No links yet. When a site links to you, mark it won on its card or add the page above.</div>'}`;
+    $('#newLinkGo').onclick = async () => {
+      try { const r = await post('/api/links/won', { source_url: $('#newLink').value }); toast(r.status === 'live' ? `Live: ${r.rel}` : r.error || r.status); loadLinks(); } catch (e) { toast(e.message); }
+    };
+    body.querySelectorAll('[data-lcheck]').forEach((b) => b.onclick = async () => {
+      b.disabled = true; try { const r = await post(`/api/links/won/${b.dataset.lcheck}/check`); toast(r.status === 'live' ? `Live (${r.rel})` : r.error || r.status); loadLinks(); } catch (e) { toast(e.message); b.disabled = false; }
+    });
+    body.querySelectorAll('[data-ldel]').forEach((b) => b.onclick = async () => { if (!confirm('Remove this link from tracking?')) return; await post(`/api/links/won/${b.dataset.ldel}/delete`); loadLinks(); });
+    return;
+  }
+  body.innerHTML = `<div class="filters" id="lFilters">
+      <input type="search" placeholder="Search sites" value="${esc(lf.q)}" data-lf="q">
+      <select data-lf="status">${opt('', 'Open prospects', lf.status)}${['found', 'ready', 'pitched', 'replied', 'won', 'lost', 'skipped', 'do_not_contact'].map((x) => opt(x, label(x), lf.status)).join('')}</select>
+      <select data-lf="tactic">${opt('', 'All tactics', lf.tactic)}${Object.entries(TACTIC_INFO).map(([k, v]) => opt(k, `${v.name}${sum.tactics[k] ? ' (' + sum.tactics[k] + ')' : ''}`, lf.tactic)).join('')}</select>
+      <select data-lf="contact">${opt('', 'Any contact', lf.contact)}${opt('email', 'Has email', lf.contact)}${opt('none', 'No contact yet', lf.contact)}</select>
+      <select data-lf="sort">${opt('odds', 'Sort: most likely to answer', lf.sort)}${opt('authority', 'Sort: highest authority', lf.sort)}${opt('newest', 'Sort: newest', lf.sort)}${opt('name', 'Sort: A to Z', lf.sort)}${opt('follow_up', 'Sort: follow-up date', lf.sort)}</select>
+    </div><div id="lList"></div>`;
+  await loadProspectList();
+}
+const domainName = (u) => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return u; } };
+async function loadProspectList() {
+  const p = new URLSearchParams(Object.entries(lf).filter(([k, v]) => v && k !== 'view'));
+  const list = await api('/api/links/prospects?' + p);
+  $('#lList').innerHTML = `<div class="small muted" style="margin-bottom:8px">${list.length} site${list.length === 1 ? '' : 's'}</div>` +
+    (list.map(prospectCard).join('') || `<div class="empty">No prospects yet. Press <b>Find prospects</b> and Claude will search the web for sites that fit.</div>`);
+}
+let lSearchT;
+document.addEventListener('input', (e) => { if (e.target.dataset?.lf === 'q') { lf.q = e.target.value; clearTimeout(lSearchT); lSearchT = setTimeout(loadProspectList, 300); } });
+document.addEventListener('change', (e) => { const k = e.target.dataset?.lf; if (k && k !== 'q') { lf[k] = e.target.value; loadProspectList(); } });
+
+function tacticSelect(id, findableOnly, cur) {
+  return `<select id="${id}" style="width:100%">${Object.entries(TACTIC_INFO).filter(([, v]) => !findableOnly || v.findable).map(([k, v]) => `<option value="${k}" ${k === cur ? 'selected' : ''}>${esc(v.name)}</option>`).join('')}</select>`;
+}
+const TACTIC_HELP = {
+  resource: 'Pages that list helpful links for new and expecting parents. Highest yield for a free tool.',
+  roundup: 'Independent bloggers with "best stroller" style posts. You offer a handy spec reference, not a swap.',
+  guest: 'Blogs that take contributor posts. You pitch article ideas you\'d write.',
+  expert: 'Writers who covered baby gear recently. You offer spec data or a quote. Lower odds, bigger sites.',
+  organization: 'Parent groups, hospitals, educators and family magazines in New York, Capital Region first.',
+  mention: 'Pages that already name the site without linking. Only useful after launch.',
+};
+function findDlg() {
+  if (!S.claude.set) return toast('Add your Claude key in Settings first.');
+  openDlg('Find link prospects', `
+    <label class="f">Tactic</label>${tacticSelect('fTactic', true, 'resource')}
+    <div class="small muted" id="fHelp" style="margin-top:6px">${esc(TACTIC_HELP.resource)}</div>
+    <label class="f">Topic</label><input id="fTopic" style="width:100%" placeholder="e.g. strollers, car seats, baby registry, nursery, breastfeeding">
+    <div class="chips">${['baby registry', 'strollers', 'car seats', 'nursery', 'breastfeeding', 'travel with a baby', 'twins'].map((t) => `<button class="chip" data-topic="${t}">${t}</button>`).join('')}</div>
+    <p class="small muted">Claude runs up to 6 web searches and adds up to 10 new sites, skipping ones you already have. Takes about a minute. Roughly 15 to 30 cents in Claude usage per run (estimate).</p>
+    <div class="row"><button class="btn primary" id="fGo">Find prospects</button></div><div id="fOut"></div>`);
+  $('#fTactic').onchange = () => ($('#fHelp').textContent = TACTIC_HELP[$('#fTactic').value] || '');
+  $$('[data-topic]').forEach((c) => (c.onclick = () => ($('#fTopic').value = c.dataset.topic)));
+  $('#fGo').onclick = async (e) => {
+    e.target.disabled = true; e.target.textContent = 'Searching the web… (about a minute)';
+    try {
+      const r = await post('/api/links/find', { tactic: $('#fTactic').value, topic: $('#fTopic').value });
+      $('#fOut').innerHTML = `<div class="banner info" style="margin-top:12px"><span>Added ${r.added} new site${r.added === 1 ? '' : 's'}${r.duplicates ? `, ${r.duplicates} already on your list` : ''}${r.skipped ? `, ${r.skipped} skipped (retailers, social, your own site)` : ''}.</span></div>`;
+      lf.view = 'prospects'; lf.status = ''; lf.tactic = $('#fTactic').value; lf.sort = 'newest';
+    } catch (err) { toast(err.message); }
+    e.target.disabled = false; e.target.textContent = 'Find more';
+  };
+}
+function importDlg() {
+  openDlg('Import link prospects', `
+    <p class="small muted">Upload a CSV or TSV with a URL column: an Ahrefs or Semrush backlink export of a competitor (referring pages), a Moz list, or your own sheet.
+    Recognized columns: URL / Referring page URL / Source url / Domain, Title, Domain rating / DR / Authority score / DA, Email, Name. One prospect per site; up to 500 rows per file.</p>
+    <label class="f">Tactic for these</label>${tacticSelect('iTactic', false, 'competitor')}
+    <div class="row" style="margin-top:12px"><input type="file" id="iFile" accept=".csv,.tsv,.txt,text/csv"><button class="btn primary" id="iGo">Import</button></div><div id="iOut"></div>`);
+  $('#iGo').onclick = async () => {
+    const file = $('#iFile').files[0]; if (!file) return toast('Choose the file first');
+    const rows = await readTable(file); if (rows.length < 2) return toast('That file looks empty');
+    try {
+      const r = await post('/api/links/import', { columns: rows[0], rows: rows.slice(1), tactic: $('#iTactic').value });
+      $('#iOut').innerHTML = `<div class="banner info" style="margin-top:12px"><span>Added ${r.added}. ${r.duplicates} already on your list, ${r.skipped} skipped.</span></div>`;
+    } catch (e) { toast(e.message); }
+  };
+}
+function addProspectDlg() {
+  openDlg('Add a link prospect', `<label class="f">Page or site address</label><input id="apUrl" style="width:100%" placeholder="https://…">
+    <div class="grid2"><div><label class="f">Site name</label><input id="apName"></div><div><label class="f">Tactic</label>${tacticSelect('apTactic', false, 'resource')}</div></div>
+    <label class="f">Contact email (optional)</label><input id="apEmail" style="width:100%"><label class="f">Notes</label><input id="apNotes" style="width:100%">
+    <div class="row" style="margin-top:12px"><button class="btn primary" id="apGo">Add</button></div>`);
+  $('#apGo').onclick = async () => {
+    try { const r = await post('/api/links/prospects', { url: $('#apUrl').value, name: $('#apName').value, tactic: $('#apTactic').value, contact_email: $('#apEmail').value, notes: $('#apNotes').value });
+      toast(r.duplicate ? 'Already on your list' : 'Added'); openProspect(r.id); } catch (e) { toast(e.message); }
+  };
+}
+
+async function openProspect(id) {
+  currentProspect = id; currentBrand = null;
+  if (!Object.keys(TACTIC_INFO).length) { const s = await api('/api/links/summary'); TACTIC_INFO = s.tacticInfo; LINKS = s; }
+  const d = await api(`/api/links/prospects/${id}`).catch((e) => (toast(e.message), null));
+  if (!d) return;
+  const { prospect: p, messages, replies, links } = d;
+  const research = parse(p.research, null);
+  const draft = messages.find((m) => m.status === 'draft');
+  const opt = (v, txt, cur) => `<option value="${esc(v)}" ${v === cur ? 'selected' : ''}>${esc(txt)}</option>`;
+  const g = (q2) => `https://www.google.com/search?q=${q(q2)}`;
+  const lk = (href, txt, find) => `<a class="lk ${find ? 'find' : ''}" href="${esc(href)}" target="_blank" rel="noopener">${esc(txt)}</a>`;
+  const events = [
+    ...messages.filter((m) => m.status !== 'draft').map((m) => ({ at: m.sent_at || m.created_at, cls: 'out', h: m.status === 'sent_manual' ? `You sent (by hand${m.channel ? ': ' + m.channel : ''})` : 'You sent', t: `${m.subject}\n\n${m.body}` })),
+    ...replies.map((r) => ({ at: r.received_at, cls: 'in', h: `${label(r.kind)} from ${r.from_email || 'them'}`, t: r.body || r.snippet || '' })),
+  ].sort((x, y) => String(y.at).localeCompare(String(x.at)));
+  openDlg(p.name || p.domain, `
+    <div class="row" style="margin-bottom:6px">${p.odds == null ? '<div class="score">✓</div>' : `<div class="score ${oddsTone(p.odds)}">${p.odds}%</div>`}
+      <div style="flex:1;min-width:200px"><div class="small muted">${p.odds != null ? '<b>' + oddsWord(p.odds) + '</b> · ' : ''}${esc(TACTIC_INFO[p.tactic]?.name || p.tactic)} · <a href="${esc(p.url)}" target="_blank" rel="noopener">${esc(p.page_title || p.url)}</a></div>
+      ${p.why ? `<div class="small" style="margin-top:2px">${esc(p.why)}</div>` : ''}</div></div>
+    ${LINKS.warning ? `<div class="banner warn"><span>${esc(LINKS.warning)}</span></div>` : ''}
+    <div class="grid3">
+      <div><label class="f">Status</label><select data-pf="status">${['found', 'ready', 'pitched', 'replied', 'won', 'lost', 'skipped', 'do_not_contact'].map((x) => opt(x, label(x), p.status)).join('')}</select></div>
+      <div><label class="f">Follow up on</label><input type="date" data-pf="follow_up_on" value="${esc(p.follow_up_on || '')}"></div>
+      <div><label class="f">Authority (DR/DA, optional)</label><input data-pf="authority" inputmode="numeric" value="${p.authority ?? ''}" placeholder="From Ahrefs/Moz"></div>
+    </div>
+    <div class="grid2">
+      <div><label class="f">Tactic</label><select data-pf="tactic">${Object.entries(TACTIC_INFO).map(([k, v]) => opt(k, v.name, p.tactic)).join('')}</select></div>
+      <div><label class="f">Our page to suggest</label><input data-pf="target_url" list="ourPages" value="${esc(p.target_url || '')}"></div>
+    </div>
+    <datalist id="ourPages">${(LINKS.pages || []).map((x) => `<option value="${esc(x.url)}">${esc(x.label)}</option>`).join('')}</datalist>
+
+    <div class="sec"><h3 style="flex:1">Contact</h3>${S.claude.set ? `<button class="btn sm" id="pRes">${p.researched_at ? 'Research again' : 'Find contact with Claude'}</button>` : ''}</div>
+    ${research ? `<div class="research"><b>Claude found</b> <span class="small muted">${when(p.researched_at)}</span>${research.notes ? `<div style="margin-top:4px">${esc(research.notes)}</div>` : ''}
+      <ul>${[research.email && `Email: ${esc(research.email)}${research.email_source ? ` · <a href="${esc(research.email_source)}" target="_blank" rel="noopener">where it's published</a>` : ''}`,
+        research.contact_url && `Contact page: <a href="${esc(research.contact_url)}" target="_blank" rel="noopener">open</a>`,
+        research.write_for_us_url && `Write for us: <a href="${esc(research.write_for_us_url)}" target="_blank" rel="noopener">open</a>`,
+        research.accepts_guest_posts && research.accepts_guest_posts !== 'unknown' && `Takes guest posts: ${esc(research.accepts_guest_posts)}`].filter(Boolean).map((x) => `<li>${x}</li>`).join('')}</ul>
+      ${(research.sources || []).length ? `<details class="small"><summary>Sources</summary>${research.sources.map((u) => `<div class="ellipsis"><a href="${esc(u)}" target="_blank" rel="noopener">${esc(u)}</a></div>`).join('')}</details>` : ''}</div>` : ''}
+    <div class="grid2">
+      <div><label class="f">Email</label><input data-pf="contact_email" value="${esc(p.contact_email || '')}"></div>
+      <div><label class="f">Name</label><input data-pf="contact_name" value="${esc(p.contact_name || '')}"></div>
+      <div><label class="f">Contact / write-for-us page</label><input data-pf="contact_url" value="${esc(p.contact_url || '')}"></div>
+      <div><label class="f">Site name</label><input data-pf="name" value="${esc(p.name || '')}"></div>
+    </div>
+    <div class="links" style="margin-top:10px">${lk(p.url, 'Their page')}${p.contact_url ? lk(p.contact_url, 'Contact page') : ''}
+      ${lk(g(`site:${p.domain} contact OR "write for us" OR contribute`), 'Find contact page', 1)}${lk(g(`site:${p.domain} "${S.settings.site_name}"`), 'Already mentions us?', 1)}
+      ${lk(`https://www.linkedin.com/search/results/people/?keywords=${q((p.name || p.domain) + ' editor')}`, 'Editor on LinkedIn', 1)}</div>
+
+    <div class="sec"><h3>Email</h3></div>
+    ${draft ? '<div id="pDraft"></div>' : `<div class="card" style="box-shadow:none">
+      <input id="pNote" style="width:100%" placeholder="Anything to mention? (optional) e.g. their car seat checklist is great">
+      <div class="row" style="margin-top:10px"><button class="btn primary" id="pDraftBtn">${S.claude.set ? 'Write pitch with Claude' : 'Write pitch from template'}</button></div></div>`}
+
+    <div class="sec"><h3 style="flex:1">Got the link?</h3></div>
+    ${links.map((l) => `<div class="small" style="margin-bottom:6px">${tag(l.status === 'live' ? 'approved' : 'declined', l.status)} ${relTag(l.rel)} <a href="${esc(l.source_url)}" target="_blank" rel="noopener">${esc(l.source_url)}</a>${l.anchor ? ` · "${esc(l.anchor)}"` : ''}</div>`).join('')}
+    <div class="row"><input id="wonUrl" placeholder="The page with your link" value="${esc(links.length ? '' : p.url)}" style="flex:1;min-width:220px"><button class="btn" id="wonGo">Mark won & check link</button></div>
+
+    <details style="margin-top:14px"><summary class="small">Paste a reply they sent (from a form, DM, or another inbox)</summary>
+      <label class="f">Their email (optional)</label><input id="plFrom" style="width:100%">
+      <label class="f">What they said</label><textarea id="plText" style="min-height:100px"></textarea><button class="btn sm" style="margin-top:8px" id="plGo">Save reply</button></details>
+
+    <div class="sec"><h3>Notes</h3></div><textarea data-pf="notes" style="min-height:80px">${esc(p.notes || '')}</textarea>
+    <div class="sec"><h3>History</h3></div>
+    <div class="timeline">${events.map((e) => `<div class="ev ${e.cls}"><div class="small"><b>${esc(e.h)}</b> <span class="muted">${when(e.at)}</span></div><div class="t">${esc(e.t)}</div></div>`).join('') || '<div class="muted small">Nothing yet.</div>'}</div>
+    <div class="row" style="margin-top:18px"><button class="btn sm danger" data-pstatus="skipped">Skip</button><button class="btn sm danger" data-pstatus="lost">They said no</button><button class="btn sm danger" data-pstatus="do_not_contact">Do not contact</button></div>`);
+  if (draft) $('#pDraft').innerHTML = draftCard({ ...draft, brand: p.name || p.domain, contact_url: p.contact_url, tactic: p.tactic });
+  const body = $('#dlgBody');
+  body.querySelectorAll('[data-pf]').forEach((inp) => inp.addEventListener('change', async () => {
+    try { await post(`/api/links/prospects/${id}`, { [inp.dataset.pf]: inp.value }); toast('Saved'); if (['status', 'contact_email', 'authority', 'tactic'].includes(inp.dataset.pf)) openProspect(id); } catch (e) { toast(e.message); }
+  }));
+  $('#pRes')?.addEventListener('click', async (e) => {
+    e.target.disabled = true; e.target.textContent = 'Searching… (about 30 seconds)';
+    try { const r = await post(`/api/links/prospects/${id}/research`); toast(r.foundEmail ? `Found ${r.foundEmail}` : 'No published email. Check the contact page.'); openProspect(id); }
+    catch (err) { toast(err.message); e.target.disabled = false; }
+  });
+  $('#pDraftBtn')?.addEventListener('click', async (e) => {
+    e.target.disabled = true; e.target.textContent = 'Writing…';
+    try { await post(`/api/links/prospects/${id}/draft`, { note: $('#pNote').value }); await refreshSummary(); openProspect(id); } catch (err) { toast(err.message); e.target.disabled = false; }
+  });
+  $('#wonGo').onclick = async () => {
+    try { const r = await post('/api/links/won', { source_url: $('#wonUrl').value, prospect_id: id }); toast(r.status === 'live' ? `Link is live (${r.rel})` : `Saved. ${r.error || r.status}`); openProspect(id); } catch (e) { toast(e.message); }
+  };
+  $('#plGo').onclick = async () => {
+    try { await post(`/api/links/prospects/${id}/reply`, { from_email: $('#plFrom').value, text: $('#plText').value }); await refreshSummary(); openProspect(id); } catch (e) { toast(e.message); }
+  };
+  body.querySelectorAll('[data-pstatus]').forEach((b) => b.onclick = async () => {
+    if (b.dataset.pstatus === 'do_not_contact' && !confirm('Never email this site? Any draft is dropped.')) return;
+    try { await post(`/api/links/prospects/${id}`, { status: b.dataset.pstatus }); closeDlg(); } catch (e) { toast(e.message); }
+  });
+}
 
 // ---------- AFFILIATES ----------
 async function loadAffiliates() {
@@ -792,6 +1045,7 @@ function openSettings() {
     <div class="grid2">${f('sender_name', 'Your name', 'Jen Cannizzo')}${f('sender_email', 'Sending address (the new inbox)', 'hello@yourdomain.com', 'email')}</div>
     ${f('business_address', 'Mailing address (required by US law in business email; a PO box or virtual mailbox works)', 'PO Box …')}
     <div class="grid2">${f('daily_cap', 'Daily send limit', '15')}${f('own_emails', 'Your other addresses (comma separated)', 'jen.cannizzo@growthopedia.com')}</div>
+    ${f('link_domains', 'Other domains that count as links to you (comma separated, e.g. your real domain before launch)', 'babybodega.com')}
     ${f('forward_to', 'Forward incoming mail to (for Cloudflare Email Routing; must be verified there)', 'jen.cannizzo@growthopedia.com', 'email')}
     <div class="row" style="margin-top:10px"><button class="btn primary" id="setSave">Save settings</button></div>
     <div class="sig" style="margin-top:12px"><b>Signature preview</b>\n${esc(S.signature || '')}</div>
@@ -815,7 +1069,7 @@ function openSettings() {
     <div class="progress" id="csvBar" hidden><i style="width:0"></i></div>
 
     <h3 style="margin-top:22px">Exports</h3>
-    <div class="links"><a class="lk" href="/api/export/brands.csv">All brands</a><a class="lk" href="/api/export/contacts.csv">Contacts</a><a class="lk" href="/api/export/affiliates.csv">Affiliate programs</a><a class="lk" href="/api/export/permissions.csv">Image permissions</a></div>`);
+    <div class="links"><a class="lk" href="/api/export/brands.csv">All brands</a><a class="lk" href="/api/export/contacts.csv">Contacts</a><a class="lk" href="/api/export/affiliates.csv">Affiliate programs</a><a class="lk" href="/api/export/permissions.csv">Image permissions</a><a class="lk" href="/api/export/link-prospects.csv">Link prospects</a><a class="lk" href="/api/export/links.csv">Won links</a></div>`);
   $('#setSave').onclick = async () => {
     const body = {}; $$('[data-set]').forEach((i) => (body[i.dataset.set] = i.value));
     try { await post('/api/settings', body); await refreshSummary(); toast('Saved'); openSettings(); } catch (e) { toast(e.message); }
@@ -829,7 +1083,7 @@ function openSettings() {
   $('#gOff')?.addEventListener('click', async () => { if (!confirm('Disconnect Gmail?')) return; await post('/api/gmail/disconnect'); await refreshSummary(); openSettings(); });
   $('#csvGo').onclick = async () => {
     const file = $('#csvFile').files[0]; if (!file) return toast('Choose the CSV first');
-    const rows = parseCSV(await file.text()); if (rows.length < 2) return toast('That file looks empty');
+    const rows = await readTable(file); if (rows.length < 2) return toast('That file looks empty');
     const bar = $('#csvBar'); bar.hidden = false;
     try {
       const r = await importRows(rows[0], rows.slice(1), (p) => (bar.firstElementChild.style.width = Math.round(p * 100) + '%'));
@@ -842,6 +1096,7 @@ function openSettings() {
 (async () => {
   try { await refreshSummary(); } catch (e) { toast(e.message); }
   if (!FILTERS.sections.length) FILTERS = await api('/api/filters').catch(() => FILTERS);
+  api('/api/links/summary').then((x) => { TACTIC_INFO = x.tacticInfo; LINKS = x; }).catch(() => {});
   showTab((location.hash || '#today').slice(1));
 })();
 </script>

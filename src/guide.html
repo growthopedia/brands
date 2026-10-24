@@ -1,5 +1,5 @@
 <h1>How to use it</h1>
-<p>One card per brand on the site, ranked by how likely they are to reply. The % is an estimate: small and mid-size brands answer more than big corporate ones, a partnerships or affiliate email beats a press inbox, which beats a general inbox or a contact form, and brands that already run an affiliate program want publishers. Researching a brand sharpens its number. "Value" (more products, pricier gear, big-ticket categories) is the second sort. For each brand you track five asks: image permission, affiliate program, samples, a TikTok/social feature, and spec data. Nothing ever sends without you pressing <b>Approve &amp; send</b>.</p>
+<p>Two jobs in one app: <b>brand outreach</b> (below) and <b>links</b> (further down). One card per brand on the site, ranked by how likely they are to reply. The % is an estimate: small and mid-size brands answer more than big corporate ones, a partnerships or affiliate email beats a press inbox, which beats a general inbox or a contact form, and brands that already run an affiliate program want publishers. Researching a brand sharpens its number. "Value" (more products, pricier gear, big-ticket categories) is the second sort. For each brand you track five asks: image permission, affiliate program, samples, a TikTok/social feature, and spec data. Nothing ever sends without you pressing <b>Approve &amp; send</b>.</p>
 
 <h2>The order that works</h2>
 <h3>Now, before launch</h3>
@@ -54,6 +54,30 @@
   <li>App → Settings → <b>Forward incoming mail to</b> = that verified inbox.</li>
 </ol>
 <p>A domain's mail goes to one place. If Google Workspace runs the inbox, Google owns the domain's mail, so put the Cloudflare route on a subdomain instead (e.g. <code>replies@in.yourdomain.com</code>) and add a Gmail filter that auto-forwards brand mail there. Mail the app can't match lands in <b>Replies → Unmatched</b> for you to file.</p>
+
+<h2>Links (backlinks)</h2>
+<p>The <b>Links</b> tab finds sites that might link to the comparison site, writes the pitch, and checks that won links stay live. Pitches share the Drafts tab, the daily send limit, reply tracking and forwarding with brand emails.</p>
+<h3>Timing</h3>
+<p>Links only help the domain they point at. Until the real domain is live and <b>Settings → Site address</b> points to it, build and research the list but hold the pitches. Once the domain is set, put it in Settings and every new pitch uses it.</p>
+<h3>Tactics, best first for a new site</h3>
+<ul>
+  <li><b>Resource pages:</b> "new parent resources" and registry resource lists. A free, no-sign-up comparison tool is exactly what they list.</li>
+  <li><b>Parent groups &amp; local orgs:</b> hospitals, childbirth educators, family resource centers, New York family magazines. Being a local parent helps here.</li>
+  <li><b>Guest posts:</b> useful articles for parenting blogs (how to compare fold sizes, which car seat specs matter). Slower, but you control the content.</li>
+  <li><b>Partner brands:</b> brands that already gave you image permission. Open the brand → <b>Ask them for a link</b>.</li>
+  <li><b>Gear roundups &amp; journalists:</b> lower odds. Offer spec data, never ask them to change their picks.</li>
+  <li><b>Unlinked mentions:</b> after launch, pages that name the site without linking. Highest odds of all.</li>
+  <li><b>Competitor links:</b> export a competitor's referring pages from Ahrefs or Semrush and use <b>Import list</b>. UTF-16 Ahrefs files work as-is.</li>
+</ul>
+<h3>Rules (Google's spam policies)</h3>
+<ul>
+  <li>Never pay, send free products, or trade links for a link. The pitches never offer any of that, and Claude politely declines paid placement requests.</li>
+  <li>Never ask for "dofollow" or mention SEO in a pitch. Relevant, editorial links are the ones that count.</li>
+  <li>Guest posts: write genuinely useful pieces with at most one natural link back. Mass guest posting with keyword-rich anchors is a link scheme.</li>
+</ul>
+<h3>Won links</h3>
+<p>When a site adds your link, open it → <b>Mark won &amp; check link</b> with the page address. The app confirms the link is in the page, records the anchor text and whether it's follow, nofollow, sponsored or ugc, and re-checks it about once a day. Lost links show at the top of <b>Won links</b>. Pages that build their content with JavaScript can hide a real link from this check; open the page to confirm.</p>
+<p><b>Authority</b> is optional: paste a DR or DA from Ahrefs, Moz or Semrush. Very high-authority sites score lower on "likely to answer" because they rarely reply to small sites.</p>
 
 <h2>Updating the product list</h2>
 <p>Settings → <b>Import CSV</b> with the same columns (Section, Type, Brand, Product, Model, List price (USD), Status, Past recall, Maker page, Site page). New brands get added and ranked; existing brands keep their contacts, notes, emails and permissions.</p>

@@ -26,6 +26,7 @@ export const SETTING_KEYS = {
   daily_cap: 'DAILY_SEND_CAP',
   about: null, // what the site is and what Jen can honestly offer brands; Claude only uses facts from here
   own_emails: null, // other addresses of Jen's, so her own messages aren't logged as brand replies
+  link_domains: null, // extra domains that count as links to us (e.g. the real domain before Site address switches to it)
   forward_to: null, // where mail arriving through Cloudflare Email Routing is forwarded (must be verified there)
 };
 const DEFAULT_ABOUT = `Baby Bodega is an independent baby gear comparison site, launching soon. It compares products side by side

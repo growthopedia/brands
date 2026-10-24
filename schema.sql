@@ -148,3 +148,52 @@ CREATE TABLE IF NOT EXISTS suppression (
 );
 
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
+
+-- ---------- Backlinks ----------
+-- Sites that might link to the comparison site. Pitches reuse the messages table (brand_id = 0, prospect_id set).
+CREATE TABLE IF NOT EXISTS link_prospects (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  url TEXT NOT NULL,                               -- the page that would link (or the site's home page)
+  domain TEXT NOT NULL UNIQUE,                     -- one prospect per site
+  name TEXT,                                       -- site or publication name
+  page_title TEXT,
+  tactic TEXT NOT NULL DEFAULT 'resource',         -- resource | roundup | guest | expert | organization | mention | partner | competitor | other
+  why TEXT,                                        -- why it fits, in plain words
+  target_url TEXT,                                 -- our page to suggest
+  authority INTEGER,                               -- optional DR/DA you paste in from Ahrefs/Semrush/Moz
+  contact_name TEXT,
+  contact_email TEXT,
+  contact_url TEXT,                                -- contact form, "write for us" or tips page
+  status TEXT NOT NULL DEFAULT 'found',
+  -- found -> ready -> pitched -> replied -> won | lost ; also skipped, do_not_contact
+  odds INTEGER,                                    -- 0-100 estimate of how likely they answer
+  source TEXT,                                     -- claude | import | manual
+  research TEXT,                                   -- JSON from Claude
+  researched_at TEXT,
+  notes TEXT,
+  follow_up_on TEXT,
+  last_contacted_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS link_prospects_status ON link_prospects(status);
+CREATE INDEX IF NOT EXISTS link_prospects_email ON link_prospects(contact_email);
+
+-- Links you've earned. The hourly job re-checks each one about once a day.
+CREATE TABLE IF NOT EXISTS links (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  prospect_id INTEGER,
+  brand_id INTEGER,
+  source_url TEXT NOT NULL UNIQUE,                 -- the page that links to us
+  target_url TEXT,                                 -- where it points (filled in by the checker)
+  anchor TEXT,
+  rel TEXT,                                        -- follow | nofollow | sponsored | ugc (combined as found)
+  status TEXT NOT NULL DEFAULT 'pending',          -- pending | live | missing | error
+  last_error TEXT,
+  first_seen_at TEXT,
+  last_checked_at TEXT,
+  lost_at TEXT,
+  notes TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS links_checked ON links(last_checked_at);

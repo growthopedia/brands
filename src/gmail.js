@@ -1,5 +1,6 @@
 // Gmail: send approved emails and pick up replies, bounces and opt-outs.
 import { fail, first, all, setMeta, setMetaStmt, getMeta, cfg, EMAIL_RE, emailIn, sentToday, logActivity, refreshOdds } from './util.js';
+import { markPitched, applyProspectReply } from './links.js';
 
 const GMAIL = 'https://gmail.googleapis.com/gmail/v1/users/me';
 let tokenCache = { token: null, exp: 0 };
@@ -155,9 +156,11 @@ export async function sendMessage(env, id) {
   if (msg.status !== 'draft') throw fail(`Already ${msg.status}`);
   const to = (msg.to_email || '').trim().toLowerCase();
   if (!EMAIL_RE.test(to)) throw fail('Add a valid email address before sending.');
-  const brand = await first(env, `SELECT * FROM brands WHERE id=?`, msg.brand_id);
-  if (!brand) throw fail('Brand not found', 404);
-  if (brand.status === 'do_not_contact') throw fail('This brand is marked do not contact.');
+  const owner = msg.prospect_id
+    ? await first(env, `SELECT status FROM link_prospects WHERE id=?`, msg.prospect_id)
+    : await first(env, `SELECT status FROM brands WHERE id=?`, msg.brand_id);
+  if (!owner) throw fail(msg.prospect_id ? 'Prospect not found' : 'Brand not found', 404);
+  if (owner.status === 'do_not_contact') throw fail('This one is marked do not contact.');
   const sup = await first(env, `SELECT reason FROM suppression WHERE email=? OR (domain IS NOT NULL AND domain=? AND reason='optout')`, to, to.split('@')[1]);
   if (sup) throw fail(`Not sent: this address is on the do-not-contact list (${sup.reason}).`);
   if ((await sentToday(env)) >= s.daily_cap) throw fail(`Daily limit of ${s.daily_cap} reached. Resets at midnight.`);
@@ -167,7 +170,7 @@ export async function sendMessage(env, id) {
 
   let inReplyTo = null, threadId = null;
   if (msg.kind !== 'initial') { // follow-ups and answers to their reply stay in the same thread
-    const orig = await first(env, `SELECT thread_id, rfc_message_id FROM messages WHERE brand_id=? AND kind='initial' AND status='sent' ORDER BY id LIMIT 1`, msg.brand_id);
+    const orig = await first(env, `SELECT thread_id, rfc_message_id FROM messages WHERE ${msg.prospect_id ? 'prospect_id' : 'brand_id'}=? AND kind='initial' AND status='sent' ORDER BY id LIMIT 1`, msg.prospect_id || msg.brand_id);
     if (orig) { inReplyTo = orig.rfc_message_id; threadId = orig.thread_id; }
   }
   try {
@@ -192,6 +195,7 @@ export async function sendMessage(env, id) {
 
 // After any send (Gmail or by hand): brand moves to contacted, each requested ask moves to "asked".
 export function markAsked(env, msg) {
+  if (msg.prospect_id) return markPitched(env, msg);
   let asks = [];
   try { asks = JSON.parse(msg.asks || '[]'); } catch {}
   const col = { images: 'image_status', samples: 'sample_status', collab: 'collab_status', feed: 'feed_status' };
@@ -225,13 +229,14 @@ export function classify({ from, subject, snippet, headers = {} }) {
 // Save one reply and update the brand. Used by Gmail checking, forwarded mail and manual logging.
 export async function recordReply(env, r) {
   const ins = await env.DB.prepare(
-    `INSERT OR IGNORE INTO replies (brand_id, message_id, source, ext_id, thread_id, from_email, subject, snippet, body, kind, received_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  ).bind(r.brandId || null, r.messageId || null, r.source, r.extId || null, r.threadId || null, r.fromEmail || null,
+    `INSERT OR IGNORE INTO replies (brand_id, prospect_id, message_id, source, ext_id, thread_id, from_email, subject, snippet, body, kind, received_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).bind(r.brandId || null, r.prospectId || null, r.messageId || null, r.source, r.extId || null, r.threadId || null, r.fromEmail || null,
     (r.subject || '').slice(0, 300), (r.snippet || '').slice(0, 500), (r.body || '').slice(0, 20000), r.kind,
     r.receivedAt || new Date().toISOString().replace('T', ' ').slice(0, 19)).run();
   if (!ins.meta.changes) return false;
   if (r.brandId) await applyReplyEffects(env, r.brandId, r.kind, r.fromEmail);
+  else if (r.prospectId) await applyProspectReply(env, r.prospectId, r.kind, r.fromEmail);
   return true;
 }
 
@@ -262,7 +267,7 @@ export async function applyReplyEffects(env, brandId, kind, fromEmail) {
 export async function checkReplies(env) {
   const g = await gmailCreds(env);
   if (!g.refresh) return { skipped: 'Gmail not connected' };
-  const sent = await all(env, `SELECT id, brand_id, thread_id, kind FROM messages
+  const sent = await all(env, `SELECT id, brand_id, prospect_id, thread_id, kind FROM messages
      WHERE status='sent' AND thread_id IS NOT NULL AND sent_at >= datetime('now','-150 days')`);
   const byThread = new Map();
   for (const m of sent) if (!byThread.has(m.thread_id) || m.kind === 'initial') byThread.set(m.thread_id, m);
@@ -281,7 +286,7 @@ export async function checkReplies(env) {
     if (own.has(fromEmail)) continue;
     const orig = byThread.get(item.threadId);
     const ok = await recordReply(env, {
-      source: 'gmail', extId: item.id, threadId: item.threadId, brandId: orig.brand_id, messageId: orig.id, fromEmail,
+      source: 'gmail', extId: item.id, threadId: item.threadId, brandId: orig.brand_id || null, prospectId: orig.prospect_id || null, messageId: orig.id, fromEmail,
       subject: headers.subject, snippet: msg.snippet, kind: classify({ from: headers.from, subject: headers.subject, snippet: msg.snippet, headers }),
       receivedAt: new Date(Number(msg.internalDate) || Date.now()).toISOString().replace('T', ' ').slice(0, 19),
     });

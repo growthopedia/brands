@@ -23,27 +23,35 @@ export async function handleEmail(message, env, ctx) {
     const text = (email.text || stripHtml(email.html || '')).trim();
     const snippet = text.replace(/\s+/g, ' ').slice(0, 300);
 
-    // Match: thread headers → known contact email → brand domain.
-    let brandId = null, messageId = null;
+    // Match: thread headers → brand contact email → link prospect email → brand domain → prospect domain.
+    let brandId = null, prospectId = null, messageId = null;
     const refs = `${email.inReplyTo || ''} ${email.references || ''}`.match(/<[^>]+>/g) || [];
     for (const ref of refs) {
-      const msg = await first(env, `SELECT id, brand_id FROM messages WHERE rfc_message_id=?`, ref);
-      if (msg) { brandId = msg.brand_id; messageId = msg.id; break; }
+      const msg = await first(env, `SELECT id, brand_id, prospect_id FROM messages WHERE rfc_message_id=?`, ref);
+      if (msg) { brandId = msg.brand_id || null; prospectId = msg.prospect_id || null; messageId = msg.id; break; }
     }
-    if (!brandId && fromEmail) {
+    if (!brandId && !prospectId && fromEmail) {
       const b = await first(env, `SELECT id FROM brands WHERE lower(contact_email)=?
         UNION SELECT brand_id FROM contacts WHERE lower(email)=? LIMIT 1`, fromEmail, fromEmail);
       if (b) brandId = b.id;
     }
-    if (!brandId && fromEmail.includes('@')) {
+    if (!brandId && !prospectId && fromEmail) {
+      const lp = await first(env, `SELECT id FROM link_prospects WHERE lower(contact_email)=?`, fromEmail);
+      if (lp) prospectId = lp.id;
+    }
+    if (!brandId && !prospectId && fromEmail.includes('@')) {
       const dom = fromEmail.split('@')[1];
       const parts = dom.split('.');
       const root = parts.slice(-2).join('.');
       const b = await first(env, `SELECT id FROM brands WHERE domain=? OR domain=? OR ? LIKE '%.' || domain ORDER BY product_count DESC LIMIT 1`, dom, root, dom);
       if (b) brandId = b.id;
+      else {
+        const lp = await first(env, `SELECT id FROM link_prospects WHERE domain=? OR domain=?`, dom, root);
+        if (lp) prospectId = lp.id;
+      }
     }
     await recordReply(env, {
-      source: 'forward', extId: email.messageId || `${fromEmail}|${headers.date || Date.now()}`, brandId, messageId, fromEmail,
+      source: 'forward', extId: email.messageId || `${fromEmail}|${headers.date || Date.now()}`, brandId, prospectId, messageId, fromEmail,
       subject: email.subject || '', snippet, body: text.slice(0, 20000),
       kind: classify({ from: `${email.from?.name || ''} <${fromEmail}>`, subject: email.subject, snippet, headers }),
     });

@@ -12,6 +12,7 @@ import { sendMessage, checkReplies, gmailCreds, saveGmailClient, disconnectGmail
   markAsked, recordReply, applyReplyEffects, classify, signature } from './gmail.js';
 import { claudeKey, saveClaudeKey, researchBrand, draftEmail, rewriteMessage, draftAnswer, queueFollowups, ASKS } from './claude.js';
 import { handleEmail } from './inbound.js';
+import * as L from './links.js';
 
 let schemaReady = false;
 async function ensureSchema(env) {
@@ -24,6 +25,13 @@ async function ensureSchema(env) {
     await env.DB.prepare(`ALTER TABLE brands ADD COLUMN reply_odds INTEGER`).run();
     await env.DB.prepare(`CREATE INDEX IF NOT EXISTS brands_odds ON brands(reply_odds)`).run();
     await refreshOdds(env);
+  }
+  for (const t of ['messages', 'replies']) {
+    const c = (await all(env, `PRAGMA table_info(${t})`)).map((x) => x.name);
+    if (!c.includes('prospect_id')) {
+      await env.DB.prepare(`ALTER TABLE ${t} ADD COLUMN prospect_id INTEGER`).run();
+      await env.DB.prepare(`CREATE INDEX IF NOT EXISTS ${t}_prospect ON ${t}(prospect_id)`).run();
+    }
   }
   schemaReady = true;
 }
@@ -91,7 +99,30 @@ export default {
       if (path === '/api/stats') return json(await stats(env));
       if (path === '/api/check-replies' && method === 'POST') return json(await checkReplies(env));
 
+      // ---- backlinks ----
+      if (path === '/api/links/summary') return json(await L.linkSummary(env));
+      if (path === '/api/links/prospects' && method === 'GET') return json(await L.listProspects(env, url));
+      if (path === '/api/links/prospects' && method === 'POST') return json(await L.addProspect(env, await body()));
+      if (path === '/api/links/find' && method === 'POST') return json(await L.findProspects(env, await body()));
+      if (path === '/api/links/import' && method === 'POST') return json(await L.importProspects(env, await body()));
+      if (path === '/api/links/won' && method === 'GET') return json(await L.listLinks(env));
+      if (path === '/api/links/won' && method === 'POST') return json(await L.addLink(env, await body()));
+      if (path === '/api/export/link-prospects.csv') return csvResponse(await L.exportProspects(env), 'link-prospects.csv');
+      if (path === '/api/export/links.csv') return csvResponse(await L.exportLinks(env), 'links.csv');
+
       let m;
+      if ((m = path.match(/^\/api\/links\/prospects\/(\d+)(?:\/([a-z]+))?$/))) {
+        const id = Number(m[1]), sub = m[2];
+        if (!sub && method === 'GET') return json(await L.getProspect(env, id));
+        if (!sub && method === 'POST') return json(await L.updateProspect(env, id, await body()));
+        if (sub === 'research' && method === 'POST') return json(await L.researchProspect(env, id));
+        if (sub === 'draft' && method === 'POST') return json(await L.draftPitch(env, id, await body()));
+        if (sub === 'reply' && method === 'POST') return json(await L.logProspectReply(env, id, await body()));
+      }
+      if ((m = path.match(/^\/api\/links\/won\/(\d+)\/(check|delete)$/)) && method === 'POST')
+        return json(m[2] === 'check' ? await L.checkLinkById(env, Number(m[1])) : await L.deleteLink(env, Number(m[1])));
+      if ((m = path.match(/^\/api\/brands\/(\d+)\/to-link$/)) && method === 'POST') return json(await L.prospectFromBrand(env, Number(m[1])));
+
       if ((m = path.match(/^\/api\/brands\/(\d+)(?:\/([a-z-]+))?$/))) {
         const id = Number(m[1]), sub = m[2];
         if (!sub && method === 'GET') return json(await getBrand(env, id));
@@ -113,10 +144,18 @@ export default {
         if (sub === 'send') return json(await sendMessage(env, id));
         if (sub === 'manual') return json(await markManual(env, id, await body()));
         if (sub === 'skip') return json(await skipMessage(env, id));
-        if (sub === 'rewrite') return json(await rewriteMessage(env, id, await body()));
+        if (sub === 'rewrite') {
+          const msg = await first(env, `SELECT * FROM messages WHERE id=?`, id);
+          if (msg?.prospect_id && msg.status === 'draft') return json(await L.rewritePitch(env, msg, await body()));
+          return json(await rewriteMessage(env, id, await body()));
+        }
       }
       if ((m = path.match(/^\/api\/replies\/(\d+)(?:\/(answer))?$/)) && method === 'POST') {
-        if (m[2] === 'answer') return json(await draftAnswer(env, Number(m[1]), await body()));
+        if (m[2] === 'answer') {
+          const rep = await first(env, `SELECT * FROM replies WHERE id=?`, Number(m[1]));
+          if (rep?.prospect_id && !rep.brand_id) return json(await L.answerPitchReply(env, rep, await body()));
+          return json(await draftAnswer(env, Number(m[1]), await body()));
+        }
         return json(await updateReply(env, Number(m[1]), await body()));
       }
 
@@ -137,6 +176,8 @@ export default {
     ctx.waitUntil((async () => {
       await checkReplies(env).catch((e) => console.error('reply check failed', e));
       await queueFollowups(env).catch((e) => console.error('follow-ups failed', e));
+      await L.queuePitchFollowups(env).catch((e) => console.error('pitch follow-ups failed', e));
+      await L.checkDueLinks(env).catch((e) => console.error('link check failed', e));
     })());
   },
 
@@ -167,9 +208,10 @@ async function summary(env) {
 
 async function today(env) {
   const d = new Date().toLocaleDateString('en-CA', { timeZone: env.TIMEZONE || 'America/New_York' });
-  const [replies, followups, nextUp, drafts, unmatched] = await Promise.all([
-    all(env, `SELECT r.id, r.brand_id, r.from_email, r.subject, r.snippet, r.kind, r.received_at, b.name brand
-        FROM replies r LEFT JOIN brands b ON b.id=r.brand_id WHERE r.handled=0 AND r.kind IN ('reply','optout') AND r.brand_id IS NOT NULL
+  const [replies, followups, nextUp, drafts, unmatched, linkFollowups] = await Promise.all([
+    all(env, `SELECT r.id, r.brand_id, r.prospect_id, r.from_email, r.subject, r.snippet, r.kind, r.received_at, COALESCE(b.name, lp.name, lp.domain) brand
+        FROM replies r LEFT JOIN brands b ON b.id=r.brand_id LEFT JOIN link_prospects lp ON lp.id=r.prospect_id
+        WHERE r.handled=0 AND r.kind IN ('reply','optout') AND (r.brand_id IS NOT NULL OR r.prospect_id IS NOT NULL)
         ORDER BY r.received_at DESC LIMIT 20`),
     all(env, `SELECT id, name, status, follow_up_on, follow_up_note, contact_email, contact_url FROM brands
         WHERE follow_up_on IS NOT NULL AND follow_up_on <= ? AND status NOT IN ('do_not_contact','declined','partner') ORDER BY follow_up_on LIMIT 25`, d),
@@ -177,9 +219,11 @@ async function today(env) {
         WHERE status IN ('research','ready') AND NOT EXISTS (SELECT 1 FROM messages m WHERE m.brand_id=b.id AND m.status!='skipped')
         ORDER BY reply_odds DESC, score DESC LIMIT 10`),
     first(env, `SELECT COUNT(*) n FROM messages WHERE status='draft'`),
-    first(env, `SELECT COUNT(*) n FROM replies WHERE brand_id IS NULL AND kind IN ('reply','optout')`),
+    first(env, `SELECT COUNT(*) n FROM replies WHERE brand_id IS NULL AND prospect_id IS NULL AND kind IN ('reply','optout')`),
+    all(env, `SELECT id, COALESCE(name, domain) name, status, follow_up_on, contact_email FROM link_prospects
+        WHERE follow_up_on IS NOT NULL AND follow_up_on <= ? AND status NOT IN ('do_not_contact','won','lost','skipped') ORDER BY follow_up_on LIMIT 25`, d),
   ]);
-  return { date: d, replies, followups, nextUp, drafts: drafts.n, unmatched: unmatched.n };
+  return { date: d, replies, followups, linkFollowups, nextUp, drafts: drafts.n, unmatched: unmatched.n };
 }
 
 // ---------- product list import ----------
@@ -472,8 +516,10 @@ async function logReply(env, id, body) {
 
 async function listReplies(env, url) {
   const state = url.searchParams.get('state') || 'open';
-  const where = state === 'unmatched' ? `r.brand_id IS NULL` : state === 'open' ? `r.handled=0 AND r.brand_id IS NOT NULL AND r.kind IN ('reply','optout')` : '1=1';
-  return all(env, `SELECT r.*, b.name brand FROM replies r LEFT JOIN brands b ON b.id=r.brand_id WHERE ${where} ORDER BY r.received_at DESC LIMIT 300`);
+  const where = state === 'unmatched' ? `r.brand_id IS NULL AND r.prospect_id IS NULL`
+    : state === 'open' ? `r.handled=0 AND (r.brand_id IS NOT NULL OR r.prospect_id IS NOT NULL) AND r.kind IN ('reply','optout')` : '1=1';
+  return all(env, `SELECT r.*, COALESCE(b.name, lp.name, lp.domain) brand FROM replies r LEFT JOIN brands b ON b.id=r.brand_id
+    LEFT JOIN link_prospects lp ON lp.id=r.prospect_id WHERE ${where} ORDER BY r.received_at DESC LIMIT 300`);
 }
 async function updateReply(env, rid, body) {
   const r = await first(env, `SELECT * FROM replies WHERE id=?`, rid);
@@ -485,6 +531,12 @@ async function updateReply(env, rid, body) {
     await applyReplyEffects(env, b.id, body.kind || r.kind, r.from_email);
     if (r.from_email && body.add_contact) await addContact(env, b.id, { email: r.from_email, note: 'From their reply' }).catch(() => {});
   }
+  if (body.prospect_id) {
+    const lp = await first(env, `SELECT id FROM link_prospects WHERE id=?`, Number(body.prospect_id));
+    if (!lp) throw fail('Prospect not found');
+    await env.DB.prepare(`UPDATE replies SET prospect_id=? WHERE id=?`).bind(lp.id, rid).run();
+    await L.applyProspectReply(env, lp.id, body.kind || r.kind, r.from_email);
+  }
   if (body.kind && ['reply', 'optout', 'bounce', 'auto'].includes(body.kind)) await env.DB.prepare(`UPDATE replies SET kind=? WHERE id=?`).bind(body.kind, rid).run();
   if (body.handled !== undefined) await env.DB.prepare(`UPDATE replies SET handled=? WHERE id=?`).bind(body.handled ? 1 : 0, rid).run();
   return { ok: true };
@@ -492,8 +544,11 @@ async function updateReply(env, rid, body) {
 
 // ---------- drafts ----------
 async function queue(env) {
-  return all(env, `SELECT m.*, b.name brand, b.contact_name, b.contact_url, b.domain, b.product_count, b.sections, b.kind brand_kind
-    FROM messages m JOIN brands b ON b.id=m.brand_id WHERE m.status='draft' ORDER BY m.kind='reply' DESC, m.kind='followup' DESC, b.score DESC, m.id`);
+  return all(env, `SELECT m.*, COALESCE(b.name, lp.name, lp.domain) brand, COALESCE(b.contact_name, lp.contact_name) contact_name,
+      COALESCE(b.contact_url, lp.contact_url) contact_url, COALESCE(b.domain, lp.domain) domain, b.product_count, b.sections, b.kind brand_kind, lp.tactic
+    FROM messages m LEFT JOIN brands b ON b.id=m.brand_id AND m.brand_id > 0 LEFT JOIN link_prospects lp ON lp.id=m.prospect_id
+    WHERE m.status='draft' AND (b.id IS NOT NULL OR lp.id IS NOT NULL)
+    ORDER BY m.kind='reply' DESC, m.kind='followup' DESC, m.prospect_id IS NOT NULL, COALESCE(b.reply_odds, lp.odds, 0) DESC, m.id`);
 }
 async function updateMessage(env, id, body) {
   const msg = await first(env, `SELECT * FROM messages WHERE id=?`, id);
@@ -518,7 +573,7 @@ async function markManual(env, id, body) {
     env.DB.prepare(`UPDATE messages SET status='sent_manual', channel=?, sent_at=datetime('now') WHERE id=?`).bind(how, id),
     ...markAsked(env, msg),
   ]);
-  await logActivity(env, msg.brand_id, 'email_manual', `Sent by hand (${how}): ${msg.subject}`);
+  if (msg.brand_id) await logActivity(env, msg.brand_id, 'email_manual', `Sent by hand (${how}): ${msg.subject}`);
   return { ok: true };
 }
 
@@ -539,8 +594,8 @@ async function stats(env) {
     one(`SELECT COUNT(DISTINCT brand_id) n FROM replies WHERE kind='reply' AND brand_id IS NOT NULL`),
     one(`SELECT COUNT(*) n FROM brands WHERE status='partner'`),
     one(`SELECT COUNT(*) n FROM brands WHERE status='declined'`),
-    one(`SELECT COUNT(*) n FROM messages WHERE status='sent'`),
-    one(`SELECT COUNT(*) n FROM messages WHERE status='sent_manual'`),
+    one(`SELECT COUNT(*) n FROM messages WHERE status='sent' AND brand_id > 0`),
+    one(`SELECT COUNT(*) n FROM messages WHERE status='sent_manual' AND brand_id > 0`),
   ]);
   const asks = {};
   for (const col of Object.keys(ASK_STATES)) {
@@ -552,7 +607,7 @@ async function stats(env) {
   const byWeek = await all(env, `SELECT strftime('%Y-%W', m.sent_at) wk, MIN(date(m.sent_at)) start, COUNT(*) sent,
       COUNT(DISTINCT CASE WHEN r.kind='reply' THEN r.brand_id END) replied
     FROM messages m LEFT JOIN replies r ON r.brand_id=m.brand_id AND r.received_at >= m.sent_at
-    WHERE m.status IN ('sent','sent_manual') AND m.kind='initial' AND m.sent_at >= datetime('now','-84 days') GROUP BY wk ORDER BY wk`);
+    WHERE m.status IN ('sent','sent_manual') AND m.kind='initial' AND m.brand_id > 0 AND m.sent_at >= datetime('now','-84 days') GROUP BY wk ORDER BY wk`);
   const rate = (a, b) => (b ? Math.round((a / b) * 1000) / 10 : 0);
   return { brands, contacted, replied, replyRate: rate(replied, contacted), partners, declined, sent, sentManual, asks, permissions, expiring, byWeek };
 }
