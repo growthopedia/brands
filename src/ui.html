@@ -230,6 +230,37 @@ const SIZE_TONE = { small: 'good', medium: 'info', large: 'warn' };
 const followersBlock = (p) => p.followers == null
   ? `<span class="fol unknown" title="${esc(p.followers_note || 'Not looked up yet')}">Followers unknown</span>`
   : `<span class="fol" title="${esc(p.followers_note || '')}"><b>${fmtNum(p.followers)}</b> ${p.platform === 'youtube' ? 'subscribers' : 'followers'}</span> ${tag(SIZE_TONE[SIZE_OF(p.followers)], SIZE_NAME[SIZE_OF(p.followers)])}`;
+const EMAIL_BADGE = { verified: ['good', '✓ Verified'], likely: ['info', '~ Likely'], unverified: ['warn', '⚠ Unverified'], bad: ['bad', "✕ Can't receive mail"] };
+function emailBadge(raw) {
+  const c = typeof raw === 'string' ? parse(raw, null) : raw;
+  if (!c) return `<span class="tag" title="Not checked yet. Use Check emails or Check again.">Not checked</span>`;
+  const [tone, txt] = EMAIL_BADGE[c.status] || ['', c.status];
+  return `<span class="tag ${tone}" title="${esc(c.note || '')}">${txt}</span>`;
+}
+function emailCheckLine(raw, kind, id) {
+  const c = typeof raw === 'string' ? parse(raw, null) : raw;
+  return `<div class="small" style="margin-top:4px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">${emailBadge(c)}<span class="muted">${esc(c?.note || 'Not checked yet.')}</span>
+    <button class="btn sm ghost" data-recheck="${kind}:${id}" style="padding:3px 10px">Check again</button></div>`;
+}
+document.addEventListener('click', async (e) => {
+  const b = e.target.closest('[data-recheck]'); if (!b) return;
+  const [kind, id] = b.dataset.recheck.split(':'); b.disabled = true; b.textContent = 'Checking…';
+  try { await post('/api/verify', { kind, id: Number(id) }); kind === 'brand' ? openBrand(Number(id)) : openProspect(Number(id)); } catch (err) { toast(err.message); b.disabled = false; }
+});
+async function checkAllEmails(btn) {
+  btn.disabled = true; let tot = { checked: 0, verified: 0, likely: 0, unverified: 0, bad: 0 };
+  try {
+    for (let i = 0; i < 60; i++) {
+      btn.textContent = `Checking… ${tot.checked} done`;
+      const r = await post('/api/verify', {});
+      for (const k of Object.keys(tot)) tot[k] += r[k] || 0;
+      if (!r.checked || !r.left) break;
+    }
+    toast(`Checked ${tot.checked}: ${tot.verified} verified, ${tot.likely} likely, ${tot.unverified} unverified, ${tot.bad} can't receive mail.`);
+  } catch (err) { toast(err.message); }
+  btn.disabled = false; btn.textContent = 'Check emails';
+  const t = $$('#tabs button.on')[0]?.dataset.tab; if (t) LOADERS[t]();
+}
 const fmtNum = (n) => n == null ? '' : n >= 1e6 ? (n / 1e6).toFixed(n >= 1e7 ? 0 : 1).replace(/\.0$/, '') + 'M' : n >= 1000 ? (n / 1000).toFixed(n >= 1e4 ? 0 : 1).replace(/\.0$/, '') + 'k' : String(n);
 const lf = { view: 'prospects', q: '', status: '', tactic: '', contact: '', sort: 'odds' };
 
@@ -399,7 +430,7 @@ function brandCard(b) {
     <div class="row"><span class="name" style="flex:1">${esc(b.name)}</span>${tag(b.status)}</div>
     <div class="small muted">${b.reply_odds != null ? `<b class="odds-${oddsTone(b.reply_odds)}">${oddsWord(b.reply_odds)}</b> · value ${b.score} · ` : ''}${b.product_count} product${b.product_count === 1 ? '' : 's'}${b.max_price ? ` · up to ${money(b.max_price)}` : ''}${b.domain ? ' · ' + esc(b.domain) : ''}${b.kind === 'store_brand' ? ' · store brand' : ''}</div>
     <div style="margin-top:4px">${secs.slice(0, 4).map((s) => `<span class="tag">${esc(s)}</span>`).join('')}${secs.length > 4 ? `<span class="tag">+${secs.length - 4}</span>` : ''}</div>
-    <div class="small" style="margin-top:4px">${b.contact_email ? '✉ ' + esc(b.contact_email) : b.contact_url ? '🔗 Contact form found' : b.researched_at ? '<span class="muted">No email published</span>' : '<span class="muted">Not researched yet</span>'}</div>
+    <div class="small" style="margin-top:4px">${b.contact_email ? '✉ ' + esc(b.contact_email) + ' ' + emailBadge(b.email_check) : b.contact_url ? '🔗 Contact form found' : b.researched_at ? '<span class="muted">No email published</span>' : '<span class="muted">Not researched yet</span>'}</div>
     ${askTags(b) ? `<div style="margin-top:4px">${askTags(b)}</div>` : ''}
   </div></div>`;
 }
@@ -409,6 +440,7 @@ async function loadBrands() {
   const opt = (v, txt, cur) => `<option value="${esc(v)}" ${v === cur ? 'selected' : ''}>${esc(txt)}</option>`;
   if (!$('#bFilters')) {
     el.innerHTML = `<div class="row" style="margin-bottom:10px"><h2 style="flex:1">Brands</h2>
+        <button class="btn sm ghost" onclick="checkAllEmails(this)" title="Checks every saved email that hasn't been checked: on the cited page, domain takes mail, matches the brand">Check emails</button>
         <button class="btn sm ghost" onclick="addBrandDlg()">Add a brand</button>
         <a class="btn sm ghost" href="/api/export/brands.csv">Export</a></div>
       <div class="filters" id="bFilters"></div><div id="bCount" class="small muted" style="margin-bottom:8px"></div><div id="bList"></div>`;
@@ -504,6 +536,7 @@ async function openBrand(id) {
     <div class="asks">${Object.entries(ASK_LABEL).map(([k, l]) => `<div class="ask"><b>${l}</b><select data-bf="${k}">${FILTERS.asks[k].map((s) => opt(s, label(s), b[k])).join('')}</select></div>`).join('')}</div>
 
     <div class="sec"><h3 style="flex:1">Contact</h3>${S.claude.set ? `<button class="btn sm" id="resBtn">${b.researched_at ? 'Research again' : 'Research with Claude'}</button>` : ''}</div>
+    ${research?.rejected_email ? `<div class="banner bad"><span>Claude suggested <b>${esc(research.rejected_email)}</b>, but it wasn't saved: ${esc(research.rejected_why || '')}</span></div>` : ''}
     ${research ? `<div class="research"><b>Claude found</b> <span class="small muted">${when(b.researched_at)}</span>
       ${research.notes ? `<div style="margin-top:4px">${esc(research.notes)}</div>` : ''}
       <ul>${[research.email && `Email: ${esc(research.email)}${research.email_type ? ' (' + esc(research.email_type) + ')' : ''}${research.email_source ? ` · <a href="${esc(research.email_source)}" target="_blank" rel="noopener">where it's published</a>` : ''}`,
@@ -514,7 +547,7 @@ async function openBrand(id) {
       ${(research.sources || []).length ? `<details class="small" style="margin-top:6px"><summary>Sources</summary>${research.sources.map((u) => `<div class="ellipsis"><a href="${esc(u)}" target="_blank" rel="noopener">${esc(u)}</a></div>`).join('')}</details>` : ''}
     </div>` : ''}
     <div class="grid2">
-      <div><label class="f">Email</label><input data-bf="contact_email" value="${esc(b.contact_email || '')}" placeholder="press@brand.com"></div>
+      <div><label class="f">Email</label><input data-bf="contact_email" value="${esc(b.contact_email || '')}" placeholder="press@brand.com">${b.contact_email ? emailCheckLine(b.email_check, 'brand', b.id) : ''}</div>
       <div><label class="f">Name</label><input data-bf="contact_name" value="${esc(b.contact_name || '')}"></div>
       <div><label class="f">Role</label><input data-bf="contact_role" value="${esc(b.contact_role || '')}" placeholder="PR, partnerships, affiliate…"></div>
       <div><label class="f">Contact form / press page</label><input data-bf="contact_url" value="${esc(b.contact_url || '')}"></div>
@@ -671,7 +704,7 @@ function draftCard(m) {
     : m.prospect_id ? ['Shorter', 'More casual', 'Warmer opening', 'More specific about their page'] : ['Shorter', 'More casual', 'Lead with the affiliate question', 'Warmer opening', 'Mention TikTok plans'];
   return `<div class="card" data-msg="${m.id}">
     <div class="row"><b style="flex:1;cursor:pointer" ${m.prospect_id ? `data-prospectlink="${m.prospect_id}"` : `data-brandlink="${m.brand_id}"`}>${esc(m.brand)}</b>${kindTag}</div>
-    <label class="f">To</label><input class="m-to" value="${esc(m.to_email || '')}" placeholder="${m.contact_url ? 'No email: use their contact form, then press I sent it myself' : 'Add their email'}" style="width:100%">
+    <label class="f">To ${m.to_email && m.owner_email && m.to_email.toLowerCase() === String(m.owner_email).toLowerCase() ? emailBadge(m.email_check) : ''}</label><input class="m-to" value="${esc(m.to_email || '')}" placeholder="${m.contact_url ? 'No email: use their contact form, then press I sent it myself' : 'Add their email'}" style="width:100%">
     ${!m.to_email && m.contact_url ? `<div class="small" style="margin-top:4px"><a href="${esc(m.contact_url)}" target="_blank" rel="noopener">Open their contact form</a></div>` : ''}
     <label class="f">Subject</label><input class="m-subj" value="${esc(m.subject)}" style="width:100%">
     <label class="f">Email</label><textarea class="m-body">${esc(m.body)}</textarea>
@@ -794,7 +827,7 @@ function prospectCard(p) {
     <div style="margin-top:4px"><span class="tag info">${esc(TACTIC_INFO[p.tactic]?.name || p.tactic)}</span></div>
     ${p.page_title ? `<div class="small ellipsis" style="margin-top:4px">${esc(p.page_title)}</div>` : ''}
     ${p.why ? `<div class="small muted" style="margin-top:2px">${esc(p.why)}</div>` : ''}
-    <div class="small" style="margin-top:4px">${p.contact_email ? '✉ ' + esc(p.contact_email) : p.contact_url ? '🔗 Contact page found' : p.researched_at ? '<span class="muted">No email published</span>' : '<span class="muted">Contact not researched yet</span>'}</div>
+    <div class="small" style="margin-top:4px">${p.contact_email ? '✉ ' + esc(p.contact_email) + ' ' + emailBadge(p.email_check) : p.contact_url ? '🔗 Contact page found' : p.researched_at ? '<span class="muted">No email published</span>' : '<span class="muted">Contact not researched yet</span>'}</div>
   </div></div>`;
 }
 async function loadLinks() {
@@ -946,6 +979,7 @@ async function openProspect(id) {
     <datalist id="ourPages">${(LINKS.pages || []).map((x) => `<option value="${esc(x.url)}">${esc(x.label)}</option>`).join('')}</datalist>
 
     <div class="sec"><h3 style="flex:1">Contact</h3>${S.claude.set ? `<button class="btn sm" id="pRes">${p.researched_at ? 'Research again' : 'Find contact with Claude'}</button>` : ''}</div>
+    ${research?.rejected_email ? `<div class="banner bad"><span>Claude suggested <b>${esc(research.rejected_email)}</b>, but it wasn't saved: ${esc(research.rejected_why || '')}</span></div>` : ''}
     ${research ? `<div class="research"><b>Claude found</b> <span class="small muted">${when(p.researched_at)}</span>${research.notes ? `<div style="margin-top:4px">${esc(research.notes)}</div>` : ''}
       <ul>${[research.email && `Email: ${esc(research.email)}${research.email_source ? ` · <a href="${esc(research.email_source)}" target="_blank" rel="noopener">where it's published</a>` : ''}`,
         research.contact_url && `Contact page: <a href="${esc(research.contact_url)}" target="_blank" rel="noopener">open</a>`,
@@ -953,7 +987,7 @@ async function openProspect(id) {
         research.accepts_guest_posts && research.accepts_guest_posts !== 'unknown' && `Takes guest posts: ${esc(research.accepts_guest_posts)}`].filter(Boolean).map((x) => `<li>${x}</li>`).join('')}</ul>
       ${(research.sources || []).length ? `<details class="small"><summary>Sources</summary>${research.sources.map((u) => `<div class="ellipsis"><a href="${esc(u)}" target="_blank" rel="noopener">${esc(u)}</a></div>`).join('')}</details>` : ''}</div>` : ''}
     <div class="grid2">
-      <div><label class="f">Email</label><input data-pf="contact_email" value="${esc(p.contact_email || '')}"></div>
+      <div><label class="f">Email</label><input data-pf="contact_email" value="${esc(p.contact_email || '')}">${p.contact_email ? emailCheckLine(p.email_check, 'prospect', p.id) : ''}</div>
       <div><label class="f">Name</label><input data-pf="contact_name" value="${esc(p.contact_name || '')}"></div>
       <div><label class="f">Contact / write-for-us page</label><input data-pf="contact_url" value="${esc(p.contact_url || '')}"></div>
       <div><label class="f">Site name</label><input data-pf="name" value="${esc(p.name || '')}"></div>
@@ -1016,7 +1050,7 @@ function creatorCard(p) {
     <div style="margin-top:4px">${followersBlock(p)}</div>
     ${p.video_title ? `<div class="small ellipsis" style="margin-top:4px">“${esc(p.video_title)}”${p.posted_on ? ` <span class="muted">${esc(p.posted_on)}</span>` : ''}</div>` : ''}
     ${prods.length ? `<div style="margin-top:4px">${prods.slice(0, 3).map((x) => `<span class="tag">${esc(x.name)}</span>`).join('')}${prods.length > 3 ? `<span class="tag">+${prods.length - 3}</span>` : ''}</div>` : ''}
-    <div class="small" style="margin-top:4px">${p.contact_email ? '✉ ' + esc(p.contact_email) : p.researched_at ? `<span class="muted">${p.platform === 'blog' ? 'No email published: try their contact page' : 'No email published: DM them'}</span>` : '<span class="muted">Contact not researched yet</span>'}</div>
+    <div class="small" style="margin-top:4px">${p.contact_email ? '✉ ' + esc(p.contact_email) + ' ' + emailBadge(p.email_check) : p.researched_at ? `<span class="muted">${p.platform === 'blog' ? 'No email published: try their contact page' : 'No email published: DM them'}</span>` : '<span class="muted">Contact not researched yet</span>'}</div>
   </div></div>`;
 }
 async function loadCreators() {
@@ -1169,13 +1203,14 @@ async function openCreator(id, d) {
     <datalist id="ourPagesC">${prods.map((x) => `<option value="${esc(x.url)}">${esc(x.name)}</option>`).join('')}${(LINKS.pages || []).map((x) => `<option value="${esc(x.url)}">${esc(x.label)}</option>`).join('')}</datalist>
 
     <div class="sec"><h3 style="flex:1">Contact</h3>${S.claude.set ? `<button class="btn sm" id="cRes">${p.researched_at ? 'Research again' : 'Find contact with Claude'}</button>` : ''}</div>
+    ${research?.rejected_email ? `<div class="banner bad"><span>Claude suggested <b>${esc(research.rejected_email)}</b>, but it wasn't saved: ${esc(research.rejected_why || '')}</span></div>` : ''}
     ${research ? `<div class="research"><b>Claude found</b> <span class="small muted">${when(p.researched_at)}</span>${research.notes ? `<div style="margin-top:4px">${esc(research.notes)}</div>` : ''}
       <ul>${[research.email && `Email: ${esc(research.email)}${research.email_source ? ` · <a href="${esc(research.email_source)}" target="_blank" rel="noopener">where it's published</a>` : ''}`,
         research.contact_url && `Link in bio / site: <a href="${esc(research.contact_url)}" target="_blank" rel="noopener">open</a>`,
         research.manager && `Manager / agency: ${esc(research.manager)}`,
         (research.other_platforms || []).length && `Also on: ${esc(research.other_platforms.join(', '))}`].filter(Boolean).map((x) => `<li>${x}</li>`).join('')}</ul></div>` : ''}
     <div class="grid2">
-      <div><label class="f">Email</label><input data-pf="contact_email" value="${esc(p.contact_email || '')}"></div>
+      <div><label class="f">Email</label><input data-pf="contact_email" value="${esc(p.contact_email || '')}">${p.contact_email ? emailCheckLine(p.email_check, 'prospect', p.id) : ''}</div>
       <div><label class="f">First name</label><input data-pf="contact_name" value="${esc(p.contact_name || '')}"></div>
       <div><label class="f">Link in bio / website</label><input data-pf="contact_url" value="${esc(p.contact_url || '')}"></div>
       <div><label class="f">Video link</label><input data-pf="video_url" value="${esc(p.video_url || '')}"></div>

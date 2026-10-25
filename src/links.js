@@ -3,6 +3,7 @@
 // the daily limit, reply checking and forwarding with brand emails.
 import { fail, all, first, cfg, parseJ, nodash, domainOf, EMAIL_RE } from './util.js';
 import { call, textOf, jsonOut, noThink, claudeKey, WRITE_MODEL, RESEARCH_MODEL, titleCase } from './claude.js';
+import { verifyEmail, verifyManual } from './verify.js';
 
 export const TACTICS = {
   resource: {
@@ -148,7 +149,7 @@ export async function listProspects(env, url) {
   const sort = { odds: 'odds IS NULL, odds DESC, authority DESC', authority: 'authority IS NULL, authority DESC', newest: 'id DESC',
     name: 'COALESCE(name, domain) COLLATE NOCASE', follow_up: 'follow_up_on IS NULL, follow_up_on', followers: 'followers IS NULL, followers', followers_desc: 'followers IS NULL, followers DESC' }[p.get('sort')] || 'odds IS NULL, odds DESC, authority DESC';
   return all(env, `SELECT id, url, domain, name, page_title, tactic, why, target_url, authority, contact_name, contact_email, contact_url, status, odds,
-    researched_at, follow_up_on, last_contacted_at, kind, platform, handle, followers, followers_note, video_url, video_title, posted_on, products FROM link_prospects ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY ${sort} LIMIT 1000`, ...params);
+    researched_at, follow_up_on, last_contacted_at, kind, platform, handle, followers, followers_note, video_url, video_title, posted_on, products, email_check FROM link_prospects ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY ${sort} LIMIT 1000`, ...params);
 }
 
 export async function getProspect(env, id) {
@@ -198,6 +199,10 @@ export async function updateProspect(env, id, body) {
   if (!sets.length) return { ok: true };
   sets.push(`updated_at=datetime('now')`);
   await env.DB.prepare(`UPDATE link_prospects SET ${sets.join(', ')} WHERE id=?`).bind(...params, id).run();
+  if (body.contact_email !== undefined) {
+    const v = body.contact_email ? await verifyManual({ email: body.contact_email, siteDomain: p.kind === 'creator' ? null : p.domain, name: p.name, creator: p.kind === 'creator' }) : null;
+    await env.DB.prepare(`UPDATE link_prospects SET email_check=? WHERE id=?`).bind(v ? JSON.stringify(v) : null, id).run();
+  }
   if (body.contact_email) {
     await env.DB.prepare(`UPDATE messages SET to_email=? WHERE prospect_id=? AND status='draft' AND (to_email IS NULL OR to_email='')`).bind(body.contact_email.toLowerCase(), id).run();
     await env.DB.prepare(`UPDATE link_prospects SET status='ready' WHERE id=? AND status='found'`).bind(id).run();
@@ -326,7 +331,14 @@ Find: the site's name; the author of the page if named; a published email for th
 (ONLY an address you actually saw published, never a guess or a pattern); the contact page; a "write for us" or contributor
 guidelines page if one exists; whether they accept guest posts; and the site's Instagram if obvious. Be quick: 2 to 4 searches.
 contact_role is 1 to 3 words.
-Return ONLY JSON: {"name": null, "contact_name": null, "contact_role": null, "email": null, "email_source": null, "contact_url": null,
+ACCURACY RULES (very important):
+- email_source must be the exact URL of the page where you saw the email written out. The app will open that page and check the address
+  is really on it, so never cite a page that doesn't show it.
+- Prefer addresses on the site's own domain. Treat addresses that only appear in press releases or articles more than
+  two years old, or on an old/other domain, as stale: report them in notes, not as email.
+- Never guess or build an address from a pattern (like press@ + domain). If you didn't see it written, email is null.
+- email_seen_on: the date shown on or for that page if any (YYYY-MM-DD), else null.
+Return ONLY JSON: {"name": null, "contact_name": null, "contact_role": null, "email": null, "email_source": null, "email_seen_on": null, "contact_url": null,
 "write_for_us_url": null, "accepts_guest_posts": "yes|no|unknown", "notes": "one or two plain sentences on the best way in", "sources": []}`;
   const messages = [{ role: 'user', content: JSON.stringify({ site: p.domain, page: p.url, page_title: p.page_title }) }];
   let data, text = '';
@@ -341,9 +353,17 @@ Return ONLY JSON: {"name": null, "contact_name": null, "contact_role": null, "em
   const cited = [];
   for (const b of data.content || []) if (b.type === 'web_search_tool_result' && Array.isArray(b.content)) for (const x of b.content) if (x.url) cited.push(x.url);
   out.sources = [...new Set([...(out.sources || []), ...cited])].slice(0, 10);
-  const email = EMAIL_RE.test(out.email || '') ? out.email.toLowerCase() : null;
+  let email = EMAIL_RE.test(out.email || '') ? out.email.toLowerCase() : null;
+  let check = null;
+  if (email) {
+    check = await verifyEmail({ email, sourceUrl: out.email_source, siteDomain: p.kind === 'creator' ? null : p.domain, name: p.name, creator: p.kind === 'creator', seenOn: out.email_seen_on });
+    out.email_check = check;
+    const sup = await first(env, `SELECT reason FROM suppression WHERE email=?`, email);
+    if (check.status === 'bad' || sup) { out.rejected_email = email; out.rejected_why = sup ? `on the do-not-contact list (${sup.reason})` : check.note; email = null; }
+  }
   const sets = [], params = [];
   const fill = (col, val) => { if (val && !p[col]) { sets.push(`${col}=?`); params.push(String(val).slice(0, 500)); } };
+  if (email && !p.contact_email) { sets.push('email_check=?'); params.push(JSON.stringify(check)); }
   fill('name', out.name);
   fill('contact_email', email);
   if (email && !SHARED_INBOX.test(email)) fill('contact_name', out.contact_name);
@@ -354,7 +374,7 @@ Return ONLY JSON: {"name": null, "contact_name": null, "contact_role": null, "em
   params.push(JSON.stringify({ ...out, model }));
   await env.DB.prepare(`UPDATE link_prospects SET ${sets.join(', ')} WHERE id=?`).bind(...params, id).run();
   await refreshProspectOdds(env, id);
-  return { ok: true, research: out, foundEmail: email };
+  return { ok: true, research: out, foundEmail: email, check };
 }
 
 // ---------- the pitch ----------

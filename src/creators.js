@@ -5,6 +5,7 @@
 import { fail, all, first, cfg, parseJ, nodash, EMAIL_RE } from './util.js';
 import { call, textOf, jsonOut, noThink, claudeKey, WRITE_MODEL, RESEARCH_MODEL, titleCase } from './claude.js';
 import { ourPages, refreshProspectOdds } from './links.js';
+import { verifyEmail } from './verify.js';
 
 // Size tiers by followers on their main platform.
 export const SIZES = {
@@ -182,6 +183,7 @@ Find: their published business or collaboration email (YouTube About page, Insta
 or their website). ONLY an address you actually saw published; never guess. Also: their link-in-bio or website URL, their first name if they
 use it publicly, follower or subscriber count if shown, other platforms they're on, and whether they work with a talent manager or agency.
 Be quick: 2 to 4 searches.
+email_source must be the exact URL where you saw the email written out (the app opens it to check). Never guess an address.
 followers is a plain number (their largest platform's count, e.g. 24800) or null; put any detail about it in notes. email_source is the URL where you saw the email.
 Return ONLY JSON: {"first_name": null, "email": null, "email_source": null, "contact_url": null, "followers": null,
 "followers_note": null, "other_platforms": [], "manager": null, "notes": "one or two plain sentences on the best way to reach them", "sources": []}`;
@@ -198,9 +200,17 @@ Return ONLY JSON: {"first_name": null, "email": null, "email_source": null, "con
   const cited = [];
   for (const b of data.content || []) if (b.type === 'web_search_tool_result' && Array.isArray(b.content)) for (const x of b.content) if (x.url) cited.push(x.url);
   out.sources = [...new Set([...(out.sources || []), ...cited])].slice(0, 10);
-  const email = EMAIL_RE.test(out.email || '') ? out.email.toLowerCase() : null;
+  let email = EMAIL_RE.test(out.email || '') ? out.email.toLowerCase() : null;
+  let check = null;
+  if (email) {
+    check = await verifyEmail({ email, sourceUrl: out.email_source, siteDomain: null, name: p.name, creator: true });
+    out.email_check = check;
+    const sup = await first(env, `SELECT reason FROM suppression WHERE email=?`, email);
+    if (check.status === 'bad' || sup) { out.rejected_email = email; out.rejected_why = sup ? `on the do-not-contact list (${sup.reason})` : check.note; email = null; }
+  }
   const sets = [], params = [];
   const fill = (col, val) => { if (val && !p[col]) { sets.push(`${col}=?`); params.push(String(val).slice(0, 500)); } };
+  if (email && !p.contact_email) { sets.push('email_check=?'); params.push(JSON.stringify(check)); }
   fill('contact_email', email);
   fill('contact_name', out.first_name);
   fill('contact_url', out.contact_url);
@@ -211,7 +221,7 @@ Return ONLY JSON: {"first_name": null, "email": null, "email_source": null, "con
   params.push(JSON.stringify({ ...out, model }));
   await env.DB.prepare(`UPDATE link_prospects SET ${sets.join(', ')} WHERE id=?`).bind(...params, id).run();
   await refreshProspectOdds(env, id);
-  return { ok: true, research: out, foundEmail: email };
+  return { ok: true, research: out, foundEmail: email, check };
 }
 
 // ---------- the note (email or DM) ----------

@@ -1,5 +1,6 @@
 // Claude in the app: research a brand on the web, write the email, rewrite it from feedback, answer a reply.
 import { fail, first, all, cfg, setMeta, parseJ, nodash, EMAIL_RE, logActivity, refreshOdds } from './util.js';
+import { verifyEmail } from './verify.js';
 
 const API = 'https://api.anthropic.com/v1/messages';
 export const WRITE_MODEL = (env) => env.WRITE_MODEL || 'claude-sonnet-5-5';
@@ -77,10 +78,17 @@ Use web search to find, for the brand given:
 5. The parent company, if any (e.g. Newell Brands, Dorel, Artsana). Big parent companies often handle press centrally.
 contact_name: only a person's name published together with that exact email, and current. A shared inbox (press@, info@) gets null.
 contact_role: 1 to 3 words (e.g. "PR", "Partnerships", "Affiliate team").
+ACCURACY RULES (very important):
+- email_source must be the exact URL of the page where you saw the email written out. The app will open that page and check the address
+  is really on it, so never cite a page that doesn't show it.
+- Prefer addresses on the brand's own current website domain. Treat addresses that only appear in press releases or articles more than
+  two years old, or on an old/other domain, as stale: report them in notes, not as email.
+- Never guess or build an address from a pattern (like press@ + domain). If you didn't see it written, email is null.
+- email_seen_on: the date shown on or for that page if any (YYYY-MM-DD), else null.
 Be quick: 2 to 5 searches. If something isn't findable, use null. Do not invent anything.
 Return ONLY JSON, no prose:
 {"email": null, "email_type": "partnerships|affiliate|press|marketing|general|null", "contact_name": null, "contact_role": null,
- "email_source": null, "contact_url": null, "affiliate": "yes|no|unknown", "affiliate_network": null, "affiliate_url": null,
+ "email_source": null, "email_seen_on": null, "contact_url": null, "affiliate": "yes|no|unknown", "affiliate_network": null, "affiliate_url": null,
  "commission": null, "cookie_days": null, "instagram": null, "parent_company": null, "press_kit_url": null,
  "notes": "one or two plain sentences on the best way in", "sources": ["url", "..."]}`;
 
@@ -119,12 +127,20 @@ export async function researchBrand(env, id) {
   out.sources = [...new Set([...(out.sources || []), ...cited])].slice(0, 12);
   const searches = data.usage?.server_tool_use?.web_search_requests || 0;
 
-  // Fill only empty fields. Never overwrite what Jen typed.
-  const email = EMAIL_RE.test(out.email || '') ? out.email.toLowerCase() : null;
+  // Check the address before saving it: on the cited page, domain takes mail, matches the brand.
+  let email = EMAIL_RE.test(out.email || '') ? out.email.toLowerCase() : null;
+  let check = null;
+  if (email) {
+    check = await verifyEmail({ email, sourceUrl: out.email_source, siteDomain: brand.domain || brand.website, name: brand.name, seenOn: out.email_seen_on });
+    out.email_check = check;
+    const sup = await first(env, `SELECT reason FROM suppression WHERE email=?`, email);
+    if (check.status === 'bad' || sup) { out.rejected_email = email; out.rejected_why = sup ? `on the do-not-contact list (${sup.reason})` : check.note; email = null; }
+  }
   const net = normNetwork(out.affiliate_network);
   const sets = [], p = [];
   const fill = (col, val) => { if (val && !brand[col]) { sets.push(`${col}=?`); p.push(String(val).slice(0, 500)); } };
   fill('contact_email', email);
+  if (email && !brand.contact_email) { sets.push('email_check=?'); p.push(JSON.stringify(check)); }
   if (email) {
     const shared = /^(press|pr|media|info|hello|hi|contact|support|marketing|partners?(hips)?|affiliates?|collab|team|sales|customerservice|care)@/.test(email);
     if (!shared) fill('contact_name', out.contact_name);
@@ -150,7 +166,7 @@ export async function researchBrand(env, id) {
       .bind(id, out.contact_name || null, email, (String(out.contact_role || '').length <= 30 ? out.contact_role : null) || out.email_type || null, out.email_source ? `Found at ${out.email_source}` : 'Found by Claude').run();
   await refreshOdds(env, id);
   await logActivity(env, id, 'research', `Claude researched (${searches} searches)${email ? `, found ${email}` : ', no email published'}`);
-  return { ok: true, research: out, foundEmail: email };
+  return { ok: true, research: out, foundEmail: email, check };
 }
 
 // ---------- the email ----------

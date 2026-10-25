@@ -1,6 +1,7 @@
 // Gmail: send approved emails and pick up replies, bounces and opt-outs.
 import { fail, first, all, setMeta, setMetaStmt, getMeta, cfg, EMAIL_RE, emailIn, sentToday, logActivity, refreshOdds } from './util.js';
 import { markPitched, applyProspectReply } from './links.js';
+import { verifyManual } from './verify.js';
 
 const GMAIL = 'https://gmail.googleapis.com/gmail/v1/users/me';
 let tokenCache = { token: null, exp: 0 };
@@ -164,6 +165,9 @@ export async function sendMessage(env, id) {
   const sup = await first(env, `SELECT reason FROM suppression WHERE email=? OR (domain IS NOT NULL AND domain=? AND reason='optout')`, to, to.split('@')[1]);
   if (sup) throw fail(`Not sent: this address is on the do-not-contact list (${sup.reason}).`);
   if ((await sentToday(env)) >= s.daily_cap) throw fail(`Daily limit of ${s.daily_cap} reached. Resets at midnight.`);
+  // Last check before sending: the address's domain must be able to receive mail.
+  const mailCheck = await verifyManual({ email: to });
+  if (mailCheck?.status === 'bad') throw fail(`Not sent: ${to} can't receive mail (${mailCheck.note.replace(/^Can't receive mail: /, '').replace(/\.$/, '')}). Find another contact.`);
 
   const claim = await env.DB.prepare(`UPDATE messages SET status='sending' WHERE id=? AND status='draft'`).bind(id).run();
   if (!claim.meta.changes) throw fail('Already being sent');

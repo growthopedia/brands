@@ -14,6 +14,7 @@ import { claudeKey, saveClaudeKey, researchBrand, draftEmail, rewriteMessage, dr
 import { handleEmail } from './inbound.js';
 import * as L from './links.js';
 import * as C from './creators.js';
+import { verifyEmail, verifyManual } from './verify.js';
 
 let schemaReady = false;
 async function ensureSchema(env) {
@@ -26,6 +27,10 @@ async function ensureSchema(env) {
     await env.DB.prepare(`ALTER TABLE brands ADD COLUMN reply_odds INTEGER`).run();
     await env.DB.prepare(`CREATE INDEX IF NOT EXISTS brands_odds ON brands(reply_odds)`).run();
     await refreshOdds(env);
+  }
+  for (const t of ['brands', 'link_prospects']) {
+    const c = (await all(env, `PRAGMA table_info(${t})`)).map((x) => x.name);
+    if (!c.includes('email_check')) await env.DB.prepare(`ALTER TABLE ${t} ADD COLUMN email_check TEXT`).run();
   }
   const lpCols = (await all(env, `PRAGMA table_info(link_prospects)`)).map((x) => x.name);
   for (const [c, typ] of [['kind', "TEXT NOT NULL DEFAULT 'site'"], ['platform', 'TEXT'], ['handle', 'TEXT'], ['followers', 'INTEGER'],
@@ -126,6 +131,8 @@ export default {
       if (path === '/api/permissions') return json(await listPermissions(env));
       if (path === '/api/stats') return json(await stats(env));
       if (path === '/api/check-replies' && method === 'POST') return json(await checkReplies(env));
+      if (path === '/api/verify' && method === 'POST') return json(await recheckEmails(env, await body()));
+      if (path === '/api/verify/status') return json(await verifyStatus(env));
 
       // ---- creators ----
       if (path === '/api/creators/summary') return json(await C.creatorSummary(env));
@@ -405,7 +412,7 @@ async function listBrands(env, url) {
   const order = p.get('q') ? `(name LIKE ?) DESC, ${sort}` : sort;
   if (p.get('q')) params.push(`%${p.get('q')}%`);
   return all(env, `SELECT id, name, domain, website, kind, sections, product_count, max_price, has_recall, score, status, contact_name, contact_email,
-      contact_url, reply_odds, image_status, affiliate_status, affiliate_network, sample_status, collab_status, feed_status, researched_at, follow_up_on, last_contacted_at
+      contact_url, reply_odds, email_check, image_status, affiliate_status, affiliate_network, sample_status, collab_status, feed_status, researched_at, follow_up_on, last_contacted_at
       FROM brands b ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY ${order} LIMIT 1000`, ...params);
 }
 
@@ -453,6 +460,10 @@ async function updateBrand(env, id, body) {
   if (!sets.length) return { ok: true };
   sets.push(`updated_at=datetime('now')`);
   await env.DB.prepare(`UPDATE brands SET ${sets.join(', ')} WHERE id=?`).bind(...params, id).run();
+  if (body.contact_email !== undefined) {
+    const v = body.contact_email ? await verifyManual({ email: body.contact_email, siteDomain: brand.domain || brand.website, name: brand.name }) : null;
+    await env.DB.prepare(`UPDATE brands SET email_check=? WHERE id=?`).bind(v ? JSON.stringify(v) : null, id).run();
+  }
   if (body.contact_email) {
     await env.DB.prepare(`UPDATE messages SET to_email=? WHERE brand_id=? AND status='draft' AND (to_email IS NULL OR to_email='')`).bind(body.contact_email.toLowerCase(), id).run();
     if (brand.status === 'research') await env.DB.prepare(`UPDATE brands SET status='ready' WHERE id=?`).bind(id).run();
@@ -481,6 +492,49 @@ async function researchCandidates(env, url) {
   const n = Math.min(25, Number(url.searchParams.get('n')) || 10);
   return all(env, `SELECT id, name FROM brands WHERE researched_at IS NULL AND status NOT IN ('do_not_contact','skipped','declined','partner')
     ORDER BY reply_odds DESC, score DESC LIMIT ?`, n);
+}
+
+// ---------- email checks ----------
+// Re-check saved emails: one record ({kind, id}) or the next batch that has never been checked.
+async function recheckEmails(env, body) {
+  let rows = [];
+  if (body.kind && body.id) {
+    rows = body.kind === 'brand'
+      ? await all(env, `SELECT 'brand' k, id, contact_email email, domain site, name, research, NULL pkind FROM brands WHERE id=?`, Number(body.id))
+      : await all(env, `SELECT 'prospect' k, id, contact_email email, domain site, name, research, kind pkind FROM link_prospects WHERE id=?`, Number(body.id));
+  } else {
+    rows = [
+      ...await all(env, `SELECT 'brand' k, id, contact_email email, domain site, name, research, NULL pkind FROM brands
+        WHERE COALESCE(contact_email,'')!='' AND email_check IS NULL LIMIT 8`),
+      ...await all(env, `SELECT 'prospect' k, id, contact_email email, domain site, name, research, kind pkind FROM link_prospects
+        WHERE COALESCE(contact_email,'')!='' AND email_check IS NULL LIMIT 8`),
+    ].slice(0, 10);
+  }
+  const out = { checked: 0, verified: 0, likely: 0, unverified: 0, bad: 0 };
+  await Promise.all(rows.map(async (r) => {
+    if (!r.email) return;
+    const research = parseJ(r.research, {});
+    const fromResearch = research.email && String(research.email).toLowerCase() === r.email.toLowerCase();
+    const creator = r.pkind === 'creator';
+    const v = fromResearch && research.email_source
+      ? await verifyEmail({ email: r.email, sourceUrl: research.email_source, siteDomain: creator ? null : r.site, name: r.name, creator, seenOn: research.email_seen_on })
+      : await verifyManual({ email: r.email, siteDomain: creator ? null : r.site, name: r.name, creator });
+    await env.DB.prepare(`UPDATE ${r.k === 'brand' ? 'brands' : 'link_prospects'} SET email_check=? WHERE id=?`).bind(JSON.stringify(v), r.id).run();
+    out.checked++; out[v.status]++;
+  }));
+  out.left = await verifyLeft(env);
+  return out;
+}
+async function verifyLeft(env) {
+  const a = await first(env, `SELECT COUNT(*) n FROM brands WHERE COALESCE(contact_email,'')!='' AND email_check IS NULL`);
+  const b = await first(env, `SELECT COUNT(*) n FROM link_prospects WHERE COALESCE(contact_email,'')!='' AND email_check IS NULL`);
+  return (a?.n || 0) + (b?.n || 0);
+}
+async function verifyStatus(env) {
+  const rows = await all(env, `SELECT json_extract(email_check,'$.status') s, COUNT(*) n FROM brands WHERE COALESCE(contact_email,'')!='' GROUP BY 1
+    UNION ALL SELECT json_extract(email_check,'$.status') s, COUNT(*) n FROM link_prospects WHERE COALESCE(contact_email,'')!='' GROUP BY 1`);
+  const t = {}; for (const r of rows) t[r.s || 'unchecked'] = (t[r.s || 'unchecked'] || 0) + r.n;
+  return t;
 }
 
 // ---------- contacts, activity, permissions, replies ----------
@@ -597,7 +651,7 @@ async function updateReply(env, rid, body) {
 // ---------- drafts ----------
 async function queue(env) {
   return all(env, `SELECT m.*, COALESCE(b.name, lp.name, lp.domain) brand, COALESCE(b.contact_name, lp.contact_name) contact_name,
-      COALESCE(b.contact_url, lp.contact_url) contact_url, COALESCE(b.domain, lp.domain) domain, b.product_count, b.sections, b.kind brand_kind, lp.tactic, lp.kind lp_kind, lp.platform, lp.handle, lp.url lp_url
+      COALESCE(b.contact_url, lp.contact_url) contact_url, COALESCE(b.domain, lp.domain) domain, COALESCE(b.contact_email, lp.contact_email) owner_email, COALESCE(b.email_check, lp.email_check) email_check, b.product_count, b.sections, b.kind brand_kind, lp.tactic, lp.kind lp_kind, lp.platform, lp.handle, lp.url lp_url
     FROM messages m LEFT JOIN brands b ON b.id=m.brand_id AND m.brand_id > 0 LEFT JOIN link_prospects lp ON lp.id=m.prospect_id
     WHERE m.status='draft' AND (b.id IS NOT NULL OR lp.id IS NOT NULL)
     ORDER BY m.kind='reply' DESC, m.kind='followup' DESC, m.prospect_id IS NOT NULL, COALESCE(b.reply_odds, lp.odds, 0) DESC, m.id`);

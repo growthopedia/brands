@@ -55,6 +55,16 @@
 </ol>
 <p>A domain's mail goes to one place. If Google Workspace runs the inbox, Google owns the domain's mail, so put the Cloudflare route on a subdomain instead (e.g. <code>replies@in.yourdomain.com</code>) and add a Gmail filter that auto-forwards brand mail there. Mail the app can't match lands in <b>Replies → Unmatched</b> for you to file.</p>
 
+<h2>How emails are checked</h2>
+<p>Every email Claude finds is checked before it's saved, and you see a badge next to it:</p>
+<ul>
+  <li><b>✓ Verified:</b> the address is written on the page Claude cited, the domain receives mail, and it's on the brand's own site domain (or it's a creator's own address).</li>
+  <li><b>~ Likely:</b> on the brand's domain but missing from the cited page, on a look-alike domain, or from a page more than two years old. Usually fine; give it a look.</li>
+  <li><b>⚠ Unverified:</b> couldn't confirm it (page wouldn't load, different domain, or entered by you). Use the Find buttons or their contact form.</li>
+  <li><b>✕ Can't receive mail:</b> the domain doesn't exist or has no mail servers. Claude's suggestion isn't saved, and the app won't send to it.</li>
+</ul>
+<p>Brands → <b>Check emails</b> checks everything saved before this existed; <b>Check again</b> on a card re-checks one. No check can promise a mailbox is still active (only sending can), so a bounce still happens now and then. Bounced addresses are blocked for good and cleared from the card.</p>
+
 <h2>Links (backlinks)</h2>
 <p>The <b>Links</b> tab finds sites that might link to the comparison site, writes the pitch, and checks that won links stay live. Pitches share the Drafts tab, the daily send limit, reply tracking and forwarding with brand emails.</p>
 <h3>Timing</h3>
