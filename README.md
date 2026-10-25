@@ -3,7 +3,7 @@
 Asks baby gear brands for **image permission, affiliate access, samples, TikTok features and spec data**, and keeps the
 written record of every yes. Also a **backlink builder** (finds link prospects, writes pitches, checks won links stay live) and **creator outreach** (finds small creators who posted about products on the site, writes emails/DMs, and logs their permission to be featured). One card per brand on the site, ranked by how likely each brand is to reply, then by value.
 
-- **App:** https://brands.thecannizzos.com (behind Cloudflare Access)
+- **App:** https://brands.cribpicks.com (behind Cloudflare Access)
 - **How to use it:** the **Guide** tab in the app (`src/guide.html`)
 - Every push to `main` redeploys through Cloudflare Workers Builds.
 
@@ -22,7 +22,7 @@ written record of every yes. Also a **backlink builder** (finds link prospects, 
 ## Setup
 1. **Database:** D1 `brands` (ID already in `wrangler.jsonc`). Tables create themselves.
 2. **Deploy:** Cloudflare → Workers → `brands` → Settings → Build → connect `growthopedia/brands`, deploy command `npx wrangler deploy`.
-3. **Access:** Zero Trust → Access → Applications → `brands.thecannizzos.com` (and the workers.dev address, if you use it) → allow your email.
+3. **Access:** Zero Trust → Access → Applications → `brands.cribpicks.com` (and the workers.dev address, if you use it) → allow your email.
    The app refuses any request that didn't come through Access.
 4. **Claude key:** app → Settings → Claude key. Stored in the database, not in this repo.
 5. **Sending** (once the new domain, LLC and inbox exist): Guide → "Turning on sending".

@@ -40,7 +40,7 @@
 <ol>
   <li>Create the inbox on the new domain (Google Workspace, e.g. hello@yourdomain.com).</li>
   <li>In Google Admin, turn on DKIM. Add SPF (<code>v=spf1 include:_spf.google.com ~all</code>) and DMARC (<code>_dmarc</code> → <code>v=DMARC1; p=none; rua=mailto:hello@yourdomain.com</code>) to the domain's DNS.</li>
-  <li>console.cloud.google.com, signed in as the new inbox → new project → enable <b>Gmail API</b> → OAuth consent screen <b>Internal</b> → Credentials → OAuth client ID → <b>Web application</b> → Authorized redirect URI <code>https://brands.thecannizzos.com/oauth/callback</code>.</li>
+  <li>console.cloud.google.com, signed in as the new inbox → new project → enable <b>Gmail API</b> → OAuth consent screen <b>Internal</b> → Credentials → OAuth client ID → <b>Web application</b> → Authorized redirect URI <code>https://brands.cribpicks.com/oauth/callback</code>.</li>
   <li>App → Settings: sending address, mailing address, paste the Client ID and secret → <b>Connect Gmail</b> → sign in as the new inbox.</li>
 </ol>
 

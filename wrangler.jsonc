@@ -9,7 +9,11 @@
 
   // Behind Cloudflare Access (Zero Trust). The app also refuses any request that didn't come through Access.
   "workers_dev": true,
-  "routes": [{ "pattern": "brands.thecannizzos.com", "custom_domain": true }],
+  // brands.cribpicks.com is the address now; brands.thecannizzos.com stays for the switch-over, then gets removed.
+  "routes": [
+    { "pattern": "brands.cribpicks.com", "custom_domain": true },
+    { "pattern": "brands.thecannizzos.com", "custom_domain": true }
+  ],
 
   "rules": [
     { "type": "Text", "globs": ["**/*.html", "**/*.sql", "**/*.txt", "**/*.svg"], "fallthrough": true },
