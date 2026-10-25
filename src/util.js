@@ -29,7 +29,7 @@ export const SETTING_KEYS = {
   link_domains: null, // extra domains that count as links to us (e.g. the real domain before Site address switches to it)
   forward_to: null, // where mail arriving through Cloudflare Email Routing is forwarded (must be verified there)
 };
-const DEFAULT_ABOUT = `Baby Bodega is an independent baby gear comparison site, launching soon. It compares products side by side
+const DEFAULT_ABOUT = `CribPicks is an independent baby gear comparison site, launching soon. It compares products side by side
 across every baby gear category (strollers, car seats, cribs, feeding, nursery and more) using the manufacturers' own spec sheets,
 with every spec sourced. It is run by Jen Cannizzo, a parent and digital marketer in New York. It is not live to the public yet,
 so there are no traffic numbers to share. Plans: honest comparisons, a registry builder, and short TikTok videos showing the
@@ -45,7 +45,7 @@ export async function cfg(env, fresh = false) {
     v[k] = (saved != null ? saved : (envKey ? env[envKey] : '') || '').trim();
   }
   if (!v.about) v.about = DEFAULT_ABOUT.replace(/\n/g, ' ');
-  if (!v.site_name) v.site_name = 'Baby Bodega';
+  if (!v.site_name) v.site_name = 'CribPicks';
   if (!v.sender_name) v.sender_name = 'Jen Cannizzo';
   v.daily_cap = Number(v.daily_cap) || 15;
   cfgCache = { at: Date.now(), v };

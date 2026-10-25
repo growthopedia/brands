@@ -1,4 +1,4 @@
-// Baby Bodega brand outreach — Cloudflare Worker.
+// CribPicks brand outreach — Cloudflare Worker.
 // Dashboard for asking baby gear brands for image permission, affiliate access, samples and features.
 
 import UI from './ui.html';
@@ -39,6 +39,20 @@ async function ensureSchema(env) {
       await env.DB.prepare(`CREATE INDEX IF NOT EXISTS ${t}_prospect ON ${t}(prospect_id)`).run();
     }
   }
+  // Renamed Baby Bodega -> CribPicks (Oct 2026): update saved settings and stored page links once.
+  if (!(await first(env, `SELECT 1 FROM meta WHERE key='renamed_cribpicks'`))) {
+    const OLD = 'https://strollers.engagements-c1b.workers.dev', NEW = 'https://cribpicks.com';
+    await env.DB.batch([
+      env.DB.prepare(`UPDATE meta SET value='CribPicks' WHERE key='cfg_site_name' AND value IN ('Baby Bodega','Nimbus Baby')`),
+      env.DB.prepare(`UPDATE meta SET value=? WHERE key='cfg_site_url' AND (value LIKE '%engagements-c1b.workers.dev%' OR value LIKE '%babybodega.com%')`).bind(NEW),
+      env.DB.prepare(`UPDATE meta SET value=replace(value, 'Baby Bodega', 'CribPicks') WHERE key='cfg_about'`),
+      env.DB.prepare(`UPDATE link_prospects SET target_url=replace(target_url, ?, ?) WHERE target_url LIKE ?`).bind(OLD, NEW, OLD + '%'),
+      env.DB.prepare(`UPDATE link_prospects SET products=replace(products, ?, ?) WHERE products LIKE ?`).bind(OLD, NEW, '%' + OLD + '%'),
+      env.DB.prepare(`UPDATE messages SET body=replace(replace(body, ?, ?), 'Baby Bodega', 'CribPicks'), subject=replace(subject, 'Baby Bodega', 'CribPicks') WHERE status='draft'`).bind(OLD, NEW),
+      env.DB.prepare(`UPDATE creator_features SET product_urls=replace(product_urls, ?, ?) WHERE product_urls LIKE ?`).bind(OLD, NEW, '%' + OLD + '%'),
+      env.DB.prepare(`INSERT OR REPLACE INTO meta (key, value) VALUES ('renamed_cribpicks', datetime('now'))`),
+    ]);
+  }
   schemaReady = true;
 }
 
@@ -63,7 +77,7 @@ const ASK_STATES = {
   feed_status: ['none', 'asked', 'approved', 'declined'],
 };
 const MANIFEST = {
-  name: 'Baby Bodega Brands', short_name: 'Brands', start_url: '/', display: 'standalone',
+  name: 'CribPicks Brands', short_name: 'Brands', start_url: '/', display: 'standalone',
   background_color: '#f3f6f2', theme_color: '#e3ece6', icons: [{ src: '/icon.svg', sizes: 'any', type: 'image/svg+xml' }],
 };
 
