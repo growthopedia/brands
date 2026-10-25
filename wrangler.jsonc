@@ -11,7 +11,10 @@
   "workers_dev": true,
   "routes": [{ "pattern": "brands.thecannizzos.com", "custom_domain": true }],
 
-  "rules": [{ "type": "Text", "globs": ["**/*.html", "**/*.sql", "**/*.txt", "**/*.svg"], "fallthrough": true }],
+  "rules": [
+    { "type": "Text", "globs": ["**/*.html", "**/*.sql", "**/*.txt", "**/*.svg"], "fallthrough": true },
+    { "type": "Data", "globs": ["**/*.png", "**/*.ico"], "fallthrough": true }
+  ],
 
   "d1_databases": [
     { "binding": "DB", "database_name": "brands", "database_id": "57042927-3fd6-4b3d-9eeb-7fefe58d9fd1" }

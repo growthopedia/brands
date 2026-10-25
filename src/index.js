@@ -3,7 +3,18 @@
 
 import UI from './ui.html';
 import GUIDE from './guide.html';
-import ICON_SVG from './icon.svg';
+import LOGO_PNG from './brand/cribpicks-logo.png';
+import FAV32 from './brand/favicon-32.png';
+import FAV192 from './brand/favicon-192.png';
+import FAV512 from './brand/favicon-512.png';
+import APPLE from './brand/apple-touch-icon.png';
+import FAVICO from './brand/favicon.ico';
+// Brand files (same as cribpicks.com/brand/). Served with long caching.
+const BRAND_FILES = {
+  '/brand/cribpicks-logo.png': [LOGO_PNG, 'image/png'], '/brand/favicon-32.png': [FAV32, 'image/png'],
+  '/brand/favicon-192.png': [FAV192, 'image/png'], '/brand/favicon-512.png': [FAV512, 'image/png'],
+  '/apple-touch-icon.png': [APPLE, 'image/png'], '/favicon.ico': [FAVICO, 'image/x-icon'],
+};
 import SCHEMA from '../schema.sql';
 import SEED from './seed.json';
 import { refreshOdds } from './util.js';
@@ -91,7 +102,9 @@ const ASK_STATES = {
 };
 const MANIFEST = {
   name: 'Cribpicks Brands', short_name: 'Brands', start_url: '/', display: 'standalone',
-  background_color: '#f3f6f2', theme_color: '#e3ece6', icons: [{ src: '/icon.svg', sizes: 'any', type: 'image/svg+xml' }],
+  background_color: '#f8f4ea', theme_color: '#ece5d3',
+  icons: [{ src: '/brand/favicon-192.png', sizes: '192x192', type: 'image/png' }, { src: '/brand/favicon-512.png', sizes: '512x512', type: 'image/png' },
+    { src: '/brand/favicon-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' }],
 };
 
 export default {
@@ -103,8 +116,8 @@ export default {
     const body = async () => (method === 'POST' ? request.json().catch(() => ({})) : {});
     try {
       if (method === 'GET' && (path === '/' || path === '/index.html')) return html(UI);
-      if (path === '/icon.svg' || path === '/favicon.svg' || path === '/favicon.ico')
-        return new Response(ICON_SVG, { headers: { 'content-type': 'image/svg+xml', 'cache-control': 'public, max-age=86400' } });
+      if (BRAND_FILES[path]) return new Response(BRAND_FILES[path][0], { headers: { 'content-type': BRAND_FILES[path][1], 'cache-control': 'public, max-age=86400' } });
+      if (path === '/icon.svg' || path === '/favicon.svg') return Response.redirect(new URL('/brand/favicon-192.png', url).href, 302);
       if (path === '/manifest.webmanifest') return new Response(JSON.stringify(MANIFEST), { headers: { 'content-type': 'application/manifest+json' } });
       if (path === '/seed.json') return json(SEED);
       if (path === '/api/guide') return html(GUIDE);

@@ -7,33 +7,36 @@
 <meta name="robots" content="noindex, nofollow">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=Fredoka:wght@500;600&display=swap" rel="stylesheet">
-<meta name="theme-color" content="#e3ece6">
-<link rel="icon" href="/icon.svg" type="image/svg+xml">
-<link rel="apple-touch-icon" href="/icon.svg">
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,500;9..144,600&display=swap" rel="stylesheet">
+<meta name="theme-color" content="#ece5d3">
+<link rel="icon" href="/favicon.ico" sizes="48x48">
+<link rel="icon" href="/brand/favicon-192.png" type="image/png" sizes="192x192">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Brands">
 <style>
-/* Cribpicks "misty morning": sage sky, white clouds, butter-yellow sun. */
+/* Cribpicks storybook woodland (same tokens as cribpicks.com): birch, parchment, linen, forest, moss, honey, fox, bark. */
 :root{
   color-scheme:light;
-  --sky:#e3ece6;--sky-deep:#cbdcd2;--mist:#f3f6f2;--cloud:#fff;--ink:#26403a;--soft:#5a6f68;--line:#d9e4dc;
-  --rain:#3f7364;--rain-dark:#2f5a4e;--rain-soft:rgba(63,115,100,.1);--sun:#ffd666;--sun-ink:#7a5600;--sun-soft:#fff3cc;
-  --bad:#a1452f;--bad-soft:#f7e2da;--info:#476a87;--info-soft:#e2edf6;
-  --head:'Fredoka','Figtree',system-ui,sans-serif;--body:'Figtree',system-ui,-apple-system,'Segoe UI',sans-serif;
-  --radius:18px;--shadow:0 1px 2px rgba(38,64,58,.05),0 10px 26px -18px rgba(38,64,58,.35);
+  --sky:#ece5d3;--sky-deep:#d9cfb6;--mist:#f8f4ea;--cloud:#fffdf7;--ink:#2f3b2c;--soft:#5f6a58;--line:#e4dcc8;
+  --rain:#4f6b47;--rain-dark:#3b5236;--rain-soft:rgba(79,107,71,.11);--sun:#e9c46a;--sun-ink:#6f5310;--sun-soft:#f8ecc8;
+  --fox:#c8693a;--fox-l:#f6dcc6;--bark:#5b4632;--sage:#8fa382;
+  --bad:#a4482a;--bad-soft:#f6dcc6;--info:#5b4632;--info-soft:#efe6d6;
+  --head:'Fraunces',Georgia,'Times New Roman',serif;--body:'Figtree',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --radius:18px;--shadow:0 1px 2px rgba(47,59,44,.05),0 10px 26px -18px rgba(47,59,44,.35);
 }
 *{box-sizing:border-box}
 body{margin:0;background:var(--mist);color:var(--ink);font:16px/1.5 var(--body);-webkit-font-smoothing:antialiased}
-h1,h2,h3{font-family:var(--head);font-weight:600;letter-spacing:-.01em;margin:0}
+h1,h2,h3{font-family:var(--head);font-weight:600;font-variation-settings:'SOFT' 50;letter-spacing:-.015em;margin:0}
 h2{font-size:22px;margin-bottom:4px}
 h3{font-size:16px}
 a{color:var(--rain)}
 header{position:sticky;top:0;z-index:5;background:var(--sky);border-bottom:1px solid var(--sky-deep)}
 .top{display:flex;align-items:center;gap:12px;padding:12px 16px;max-width:1200px;margin:0 auto}
 .logo{display:flex;align-items:center;gap:10px;text-decoration:none;color:var(--ink);font:600 21px/1 var(--head);white-space:nowrap}
-.logo img{width:34px;height:34px}
+.logo img.logo-img{height:40px;width:auto;display:block}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .logo small{font:700 11px/1 var(--body);letter-spacing:2px;text-transform:uppercase;color:var(--rain);padding-left:10px;border-left:1px solid var(--sky-deep)}
 .spacer{flex:1}
 .pill{font:600 12px/1 var(--body);padding:7px 12px;border-radius:99px;background:var(--cloud);color:var(--rain);white-space:nowrap}
@@ -96,7 +99,7 @@ th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--line);vertic
 th{font:700 11px/1.2 var(--body);color:var(--rain);text-transform:uppercase;letter-spacing:1.2px}
 .tablewrap{overflow-x:auto}
 dialog{border:0;border-radius:22px;padding:0;width:min(860px,100vw - 24px);max-height:92vh;background:var(--mist);color:var(--ink);box-shadow:0 14px 50px rgba(0,0,0,.25)}
-dialog::backdrop{background:rgba(38,64,58,.4)}
+dialog::backdrop{background:rgba(47,59,44,.4)}
 .dlg-head{display:flex;align-items:center;gap:8px;padding:14px 16px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--sky);z-index:2}
 .dlg-body{padding:16px;overflow:auto;max-height:calc(92vh - 64px)}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}
@@ -177,7 +180,7 @@ dialog::backdrop{background:rgba(38,64,58,.4)}
 <body>
 <header>
   <div class="top">
-    <a class="logo" href="#today"><img src="/icon.svg" alt=""><span id="siteName">Cribpicks</span><small>Brands</small></a>
+    <a class="logo" href="#today"><img class="logo-img" src="/brand/cribpicks-logo.png" width="1025" height="416" alt="Cribpicks"><span id="siteName" class="sr">Cribpicks</span><small>Brands</small></a>
     <div class="spacer"></div>
     <span class="pill hide-sm" id="sentPill"></span>
     <button class="iconbtn" title="Settings" aria-label="Settings" onclick="openSettings()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
@@ -1327,7 +1330,7 @@ async function loadStats() {
     const total = order.reduce((a, k) => a + (obj[k] || 0), 0) || 1;
     return `<div class="track">${order.map((k, i) => `<i style="width:${((obj[k] || 0) / total) * 100}%;background:${colors[i]}" title="${label(k)}: ${obj[k] || 0}"></i>`).join('')}</div>`;
   };
-  const C = ['#cbdcd2', '#476a87', '#3f7364', '#ffd666', '#a1452f', '#5a6f68'];
+  const C = ['#d9cfb6', '#8fa382', '#4f6b47', '#e9c46a', '#c8693a', '#5b4632'];
   const row = (k, order) => `<div class="b"><span>${ASK_LABEL[k]}</span>${bar(s.asks[k], order, C)}<span class="small">${order.slice(1).map((o) => `${label(o)} ${s.asks[k][o] || 0}`).join(' · ')}</span></div>`;
   const max = Math.max(1, ...s.byWeek.map((w) => w.sent));
   $('#tab-stats').innerHTML = `<h2 style="margin-bottom:12px">Results</h2>
