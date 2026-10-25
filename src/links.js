@@ -134,6 +134,11 @@ export async function prelaunchWarning(env) {
 export async function listProspects(env, url) {
   const p = url.searchParams, where = ['kind=?'], params = [p.get('kind') === 'creator' ? 'creator' : 'site'];
   if (p.get('platform')) { where.push('platform=?'); params.push(p.get('platform')); }
+  const size = p.get('size');
+  if (size === 'small') where.push('followers < 25000');
+  if (size === 'medium') where.push('followers >= 25000 AND followers < 250000');
+  if (size === 'large') where.push('followers >= 250000');
+  if (size === 'unknown') where.push('followers IS NULL');
   if (p.get('status')) { where.push('status=?'); params.push(p.get('status')); }
   else if (p.get('hide_done') !== '0') where.push(`status NOT IN ('skipped','do_not_contact','lost')`);
   if (p.get('tactic')) { where.push('tactic=?'); params.push(p.get('tactic')); }
@@ -141,9 +146,9 @@ export async function listProspects(env, url) {
   if (p.get('contact') === 'none') where.push(`COALESCE(contact_email,'')='' AND COALESCE(contact_url,'')=''`);
   if (p.get('q')) { const q = `%${p.get('q')}%`; where.push('(name LIKE ? OR domain LIKE ? OR page_title LIKE ? OR notes LIKE ? OR handle LIKE ? OR video_title LIKE ? OR products LIKE ?)'); params.push(q, q, q, q, q, q, q); }
   const sort = { odds: 'odds IS NULL, odds DESC, authority DESC', authority: 'authority IS NULL, authority DESC', newest: 'id DESC',
-    name: 'COALESCE(name, domain) COLLATE NOCASE', follow_up: 'follow_up_on IS NULL, follow_up_on', followers: 'followers IS NULL, followers' }[p.get('sort')] || 'odds IS NULL, odds DESC, authority DESC';
+    name: 'COALESCE(name, domain) COLLATE NOCASE', follow_up: 'follow_up_on IS NULL, follow_up_on', followers: 'followers IS NULL, followers', followers_desc: 'followers IS NULL, followers DESC' }[p.get('sort')] || 'odds IS NULL, odds DESC, authority DESC';
   return all(env, `SELECT id, url, domain, name, page_title, tactic, why, target_url, authority, contact_name, contact_email, contact_url, status, odds,
-    researched_at, follow_up_on, last_contacted_at, kind, platform, handle, followers, video_url, video_title, posted_on, products FROM link_prospects ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY ${sort} LIMIT 1000`, ...params);
+    researched_at, follow_up_on, last_contacted_at, kind, platform, handle, followers, followers_note, video_url, video_title, posted_on, products FROM link_prospects ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY ${sort} LIMIT 1000`, ...params);
 }
 
 export async function getProspect(env, id) {
@@ -188,7 +193,7 @@ export async function updateProspect(env, id, body) {
     const f = String(body.followers ?? '').replace(/[,\s]/g, '').toLowerCase();
     const n = f === '' ? null : /k$/.test(f) ? Number(f.slice(0, -1)) * 1000 : /m$/.test(f) ? Number(f.slice(0, -1)) * 1e6 : Number(f);
     if (n != null && !(n >= 0)) throw fail('Followers should be a number like 12000 or 12k.');
-    sets.push('followers=?'); params.push(n == null ? null : Math.round(n));
+    sets.push('followers=?', 'followers_note=?'); params.push(n == null ? null : Math.round(n), n == null ? null : `Entered by Jen ${new Date().toISOString().slice(0, 10)}`);
   }
   if (!sets.length) return { ok: true };
   sets.push(`updated_at=datetime('now')`);

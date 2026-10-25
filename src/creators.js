@@ -6,6 +6,12 @@ import { fail, all, first, cfg, parseJ, nodash, EMAIL_RE } from './util.js';
 import { call, textOf, jsonOut, noThink, claudeKey, WRITE_MODEL, RESEARCH_MODEL, titleCase } from './claude.js';
 import { ourPages, refreshProspectOdds } from './links.js';
 
+// Size tiers by followers on their main platform.
+export const SIZES = {
+  small: { name: 'Small', range: 'under 25k', prompt: 'small creators with roughly 1,000 to 25,000 followers' },
+  medium: { name: 'Medium', range: '25k to 250k', prompt: 'mid-size creators with roughly 25,000 to 250,000 followers' },
+  large: { name: 'Large', range: '250k and up', prompt: 'large creators with 250,000 or more followers' },
+};
 export const PLATFORMS = { youtube: 'YouTube', tiktok: 'TikTok', instagram: 'Instagram', blog: 'Blog', pinterest: 'Pinterest', other: 'Other' };
 
 function normPlatform(s, url) {
@@ -50,33 +56,40 @@ export async function findCreators(env, body) {
   const focus = String(body.focus || '').trim().slice(0, 120);
   if (focusType !== 'registry' && !focus) throw fail('Pick what to search for.');
   const platform = PLATFORMS[body.platform] ? body.platform : 'any';
+  const size = SIZES[body.size] ? body.size : 'any';
+  const want = Math.max(5, Math.min(15, Number(body.count) || 15));
   const s = await cfg(env);
   const products = focusType === 'registry' ? [] : await focusProducts(env, focusType, focus);
   if (focusType !== 'registry' && !products.length) throw fail('No products on the site match that. Pick another one.');
   const pages = await ourPages(env);
-  const existing = (await all(env, `SELECT domain FROM link_prospects WHERE kind='creator' ORDER BY id DESC LIMIT 200`)).map((r) => r.domain);
+  const existing = (await all(env, `SELECT domain FROM link_prospects WHERE kind='creator' ORDER BY id DESC LIMIT 400`)).map((r) => r.domain.split('/').slice(1).join('/'));
   const model = RESEARCH_MODEL(env);
-  const tool = { type: 'web_search_20250305', name: 'web_search', max_uses: 7 };
+  const tool = { type: 'web_search_20250305', name: 'web_search', max_uses: 12 };
   const what = focusType === 'registry' ? 'baby registry videos or posts (registry must-haves, what I registered for, registry hauls)'
     : focusType === 'brand' ? `videos or posts reviewing or showing ${focus} products` : focusType === 'category' ? `videos or posts reviewing or comparing ${focus}`
     : `videos or posts reviewing ${focus}`;
-  const system = `You find small content creators for ${s.site_name}, an independent baby gear comparison site. ${s.about}
-Use web search to find up to 10 real creators who made ${what}${platform !== 'any' ? ` on ${PLATFORMS[platform]}` : ' on YouTube, TikTok, or Instagram (video creators, not blogs)'}.
-Prefer small and mid-size creators (roughly 1,000 to 150,000 followers): parents and parents-to-be, not big media brands, retailers, or the
-brands themselves. Prefer posts from the last two years. Skip anyone in exclude (platform/handle).
+  const sizeText = size === 'any' ? 'a mix of small (under 25,000 followers), mid-size (25,000 to 250,000) and large (250,000+) creators' : SIZES[size].prompt;
+  const system = `You find content creators for ${s.site_name}, an independent baby gear comparison site. ${s.about}
+Use web search to find ${want} different real creators (aim for the full ${want}) who made ${what}${platform !== 'any' ? ` on ${PLATFORMS[platform]}` : ' on YouTube, TikTok, or Instagram (video creators, not blogs)'}.
+Lean toward ${sizeText}, but include anyone relevant: follower counts are checked separately afterward, so returning ${want} creators matters more
+than being sure of their size. Parents and parents-to-be, not media companies, retailers, or the brands themselves. Prefer posts from the last two years.
+Skip anyone whose handle is in exclude. Use your searches to find creators: try different phrasings, product names, and platforms
+(e.g. "[product] review tiktok", "[product] youtube review mom", "registry must haves [product]").
+FOLLOWERS: don't spend searches on follower counts. If a count is already visible in a result you saw (e.g. "24.8K Followers"), report it as a
+plain number with where you saw it in followers_note; otherwise null.
 For each, give the specific video or post you found. video_url must be the creator's own post (e.g. youtube.com/watch?v=..., tiktok.com/@handle/video/...,
 instagram.com/reel/...), never a search, discover, hashtag or tag page; use null if you don't have the exact post. If products is given, list the ids of the products from it they featured (only ones
-you have evidence for). Give follower or subscriber counts only if you saw them; otherwise null. Give a contact email only if you saw it
+you have evidence for). Give a contact email only if you saw it
 published (YouTube About page, bio, link-in-bio page, or their site). Never guess one.
 Return ONLY JSON, no prose:
 {"creators": [{"platform": "youtube|tiktok|instagram|blog|pinterest", "handle": "@...", "name": "creator or channel name",
-"profile_url": "...", "video_url": "...", "video_title": "...", "posted_on": "YYYY-MM-DD or null", "followers": "a plain number like 24800, or null",
+"profile_url": "...", "video_url": "...", "video_title": "...", "posted_on": "YYYY-MM-DD or null", "followers": 24800, "followers_note": "...",
 "product_ids": [], "why": "one plain sentence", "contact_email": null, "contact_url": null}]}`;
   const messages = [{ role: 'user', content: JSON.stringify({ focus: focusType === 'registry' ? 'baby registry' : focus, products: products.map(({ id, name }) => ({ id, name })),
     exclude: existing }) }];
   let data, text = '';
   for (let i = 0; i < 3; i++) {
-    data = await call(env, { model, max_tokens: 4500, system, tools: [tool], messages, ...noThink(model) });
+    data = await call(env, { model, max_tokens: 9000, system, tools: [tool], messages, ...noThink(model) });
     text += textOf(data);
     if (data.stop_reason !== 'pause_turn') break;
     messages.push({ role: 'assistant', content: data.content });
@@ -85,13 +98,13 @@ Return ONLY JSON, no prose:
   if (!out || !Array.isArray(out.creators)) throw fail('Claude came back without a usable list. Try again or change the focus.', 502);
   const byId = Object.fromEntries(products.map((p) => [p.id, p]));
   const added = []; let dupes = 0, skipped = 0;
-  for (const c of out.creators.slice(0, 12)) {
+  for (const c of out.creators.slice(0, 20)) {
     const matched = (c.product_ids || []).map((id) => byId[id]).filter(Boolean);
     const target = matched[0]?.url || (focusType === 'registry' ? pages[0]?.url : products[0]?.url) || pages[0]?.url;
     const r = await insertCreator(env, { ...c, products: matched, target_url: target }, 'claude');
     if (r.ok) added.push(r.id); else if (r.duplicate) dupes++; else skipped++;
   }
-  return { ok: true, added: added.length, duplicates: dupes, skipped, ids: added };
+  return { ok: true, returned: out.creators.length, added: added.length, duplicates: dupes, skipped, ids: added };
 }
 
 const BAD_POST = /\/(discover|tag|tags|explore|search|hashtag|results)(\/|\?|$)|[?&](q|search_query)=/i;
@@ -108,11 +121,11 @@ async function insertCreator(env, c, source) {
   const email = EMAIL_RE.test(String(c.contact_email || '')) ? String(c.contact_email).toLowerCase() : null;
   const posted = /^\d{4}-\d{2}-\d{2}$/.test(String(c.posted_on || '')) ? c.posted_on : null;
   const r = await env.DB.prepare(`INSERT INTO link_prospects (kind, tactic, url, domain, name, platform, handle, followers, video_url, video_title, posted_on, products,
-      why, target_url, contact_email, contact_url, status, source, notes)
-    VALUES ('creator', 'creator', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(url.slice(0, 1000), key, String(c.name || handle).slice(0, 200), platform, handle,
+      why, target_url, contact_email, contact_url, status, source, notes, followers_note)
+    VALUES ('creator', 'creator', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(url.slice(0, 1000), key, String(c.name || handle).slice(0, 200), platform, handle,
     parseFollowers(c.followers), /^https?:\/\//.test(String(c.video_url || '')) ? c.video_url.slice(0, 1000) : null, String(c.video_title || '').slice(0, 300) || null, posted,
     JSON.stringify((c.products || []).map(({ id, name, url: u }) => ({ id, name, url: u }))), String(c.why || '').slice(0, 1000) || null, c.target_url || null,
-    email, /^https?:\/\//.test(String(c.contact_url || '')) ? c.contact_url.slice(0, 500) : null, email ? 'ready' : 'found', source, String(c.notes || '').slice(0, 2000) || null).run();
+    email, /^https?:\/\//.test(String(c.contact_url || '')) ? c.contact_url.slice(0, 500) : null, email ? 'ready' : 'found', source, String(c.notes || '').slice(0, 2000) || null, String(c.followers_note || '').slice(0, 200) || null).run();
   await refreshProspectOdds(env, r.meta.last_row_id);
   return { ok: true, id: r.meta.last_row_id };
 }
@@ -121,6 +134,41 @@ export async function addCreator(env, body) {
   const r = await insertCreator(env, { ...body, followers: body.followers }, 'manual');
   if (r.skipped) throw fail('Add their handle or profile link.');
   return r;
+}
+
+// ---------- follower counts (several creators per Claude call) ----------
+const FOLLOWERS_OPEN = `kind='creator' AND followers IS NULL AND COALESCE(followers_note,'') NOT LIKE 'Not found%' AND status NOT IN ('skipped','do_not_contact')`;
+export async function lookupFollowers(env, body) {
+  const ids = Array.isArray(body.ids) && body.ids.length ? body.ids.slice(0, 6).map(Number)
+    : (await all(env, `SELECT id FROM link_prospects WHERE ${FOLLOWERS_OPEN} ORDER BY id LIMIT 6`)).map((r) => r.id);
+  if (!ids.length) return { ok: true, checked: 0, found: 0, left: 0 };
+  const rows = await all(env, `SELECT id, platform, handle, name, url FROM link_prospects WHERE id IN (${ids.map(() => '?').join(',')})`, ...ids);
+  const model = RESEARCH_MODEL(env);
+  const tool = { type: 'web_search_20250305', name: 'web_search', max_uses: Math.min(12, rows.length * 2) };
+  const system = `Find the current follower or subscriber count for each creator below on the platform given. Search for their profile or channel;
+counts usually appear in search results (e.g. "24.8K Followers", "112K subscribers"). Report a plain number, or null if you truly can't find it.
+Don't confuse them with other people who have similar names.
+Return ONLY JSON: {"results": [{"id": 1, "followers": 24800, "followers_note": "where you saw it, e.g. TikTok profile, Oct 2026"}]}`;
+  const messages = [{ role: 'user', content: JSON.stringify(rows.map((r) => ({ id: r.id, platform: r.platform, handle: r.handle, name: r.name, profile: r.url }))) }];
+  let data, text = '';
+  for (let i = 0; i < 3; i++) {
+    data = await call(env, { model, max_tokens: 2500, system, tools: [tool], messages, ...noThink(model) });
+    text += textOf(data);
+    if (data.stop_reason !== 'pause_turn') break;
+    messages.push({ role: 'assistant', content: data.content });
+  }
+  const out = jsonOut(text);
+  const got = Object.fromEntries((out?.results || []).map((r) => [Number(r.id), r]));
+  let found = 0;
+  for (const r of rows) {
+    const g = got[r.id], f = parseFollowers(g?.followers);
+    if (f != null) found++;
+    await env.DB.prepare(`UPDATE link_prospects SET followers=COALESCE(?, followers), followers_note=?, updated_at=datetime('now') WHERE id=?`)
+      .bind(f, f != null ? String(g.followers_note || 'Found by follower lookup').slice(0, 200) : `Not found (${new Date().toISOString().slice(0, 10)})`, r.id).run();
+    await refreshProspectOdds(env, r.id);
+  }
+  const left = (await first(env, `SELECT COUNT(*) n FROM link_prospects WHERE ${FOLLOWERS_OPEN}`)).n;
+  return { ok: true, checked: rows.length, found, left };
 }
 
 // ---------- contact research ----------
@@ -136,7 +184,7 @@ use it publicly, follower or subscriber count if shown, other platforms they're 
 Be quick: 2 to 4 searches.
 followers is a plain number (their largest platform's count, e.g. 24800) or null; put any detail about it in notes. email_source is the URL where you saw the email.
 Return ONLY JSON: {"first_name": null, "email": null, "email_source": null, "contact_url": null, "followers": null,
-"other_platforms": [], "manager": null, "notes": "one or two plain sentences on the best way to reach them", "sources": []}`;
+"followers_note": null, "other_platforms": [], "manager": null, "notes": "one or two plain sentences on the best way to reach them", "sources": []}`;
   const messages = [{ role: 'user', content: JSON.stringify({ platform: p.platform, handle: p.handle, name: p.name, profile: p.url, video: p.video_url }) }];
   let data, text = '';
   for (let i = 0; i < 3; i++) {
@@ -157,7 +205,7 @@ Return ONLY JSON: {"first_name": null, "email": null, "email_source": null, "con
   fill('contact_name', out.first_name);
   fill('contact_url', out.contact_url);
   const f = parseFollowers(out.followers);
-  if (f != null && p.followers == null) { sets.push('followers=?'); params.push(f); }
+  if (f != null) { sets.push('followers=?', 'followers_note=?'); params.push(f, String(out.followers_note || 'Found by contact research').slice(0, 200)); }
   if (p.status === 'found' && (email || p.contact_email)) sets.push(`status='ready'`);
   sets.push('research=?', `researched_at=datetime('now')`, `updated_at=datetime('now')`);
   params.push(JSON.stringify({ ...out, model }));
@@ -289,7 +337,7 @@ export async function revokeFeature(env, fid, body) {
 }
 
 export async function creatorSummary(env) {
-  const [byStatus, byPlatform, feats, sections, brands, contacted, replied] = await Promise.all([
+  const [byStatus, byPlatform, feats, sections, brands, contacted, replied, bySize, missing] = await Promise.all([
     all(env, `SELECT status k, COUNT(*) n FROM link_prospects WHERE kind='creator' GROUP BY status`),
     all(env, `SELECT platform k, COUNT(*) n FROM link_prospects WHERE kind='creator' GROUP BY platform`),
     all(env, `SELECT kind k, COUNT(*) n FROM creator_features WHERE revoked_on IS NULL GROUP BY kind`),
@@ -297,9 +345,12 @@ export async function creatorSummary(env) {
     all(env, `SELECT name v, product_count n FROM brands WHERE product_count > 0 ORDER BY name COLLATE NOCASE`),
     first(env, `SELECT COUNT(*) n FROM link_prospects WHERE kind='creator' AND last_contacted_at IS NOT NULL`),
     first(env, `SELECT COUNT(DISTINCT r.prospect_id) n FROM replies r JOIN link_prospects p ON p.id=r.prospect_id WHERE p.kind='creator' AND r.kind='reply'`),
+    all(env, `SELECT CASE WHEN followers IS NULL THEN 'unknown' WHEN followers >= 250000 THEN 'large' WHEN followers >= 25000 THEN 'medium' ELSE 'small' END k, COUNT(*) n
+      FROM link_prospects WHERE kind='creator' AND status NOT IN ('skipped','do_not_contact') GROUP BY 1`),
+    first(env, `SELECT COUNT(*) n FROM link_prospects WHERE ${FOLLOWERS_OPEN}`),
   ]);
   const o = (rows) => Object.fromEntries(rows.map((r) => [r.k, r.n]));
-  return { contacted: contacted?.n || 0, replied: replied?.n || 0, statuses: o(byStatus), platforms: o(byPlatform), features: o(feats), platformNames: PLATFORMS, asks: CREATOR_ASKS, sections, brands };
+  return { contacted: contacted?.n || 0, replied: replied?.n || 0, sizes: o(bySize), sizeInfo: SIZES, missingFollowers: missing?.n || 0, statuses: o(byStatus), platforms: o(byPlatform), features: o(feats), platformNames: PLATFORMS, asks: CREATOR_ASKS, sections, brands };
 }
 
 export async function listFeatures(env) {
@@ -316,6 +367,6 @@ export async function featuresForSite(env) {
 }
 
 export async function exportCreators(env) {
-  return all(env, `SELECT name, platform, handle, followers, url profile_url, video_title, video_url, posted_on, status, odds, contact_name, contact_email,
+  return all(env, `SELECT name, platform, handle, followers, CASE WHEN followers IS NULL THEN '' WHEN followers >= 250000 THEN 'large' WHEN followers >= 25000 THEN 'medium' ELSE 'small' END size, followers_note, url profile_url, video_title, video_url, posted_on, status, odds, contact_name, contact_email,
     contact_url, target_url, products, why, notes, last_contacted_at FROM link_prospects WHERE kind='creator' ORDER BY odds DESC`);
 }

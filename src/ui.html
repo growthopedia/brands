@@ -72,6 +72,11 @@ label.f+input,label.f+select,label.f+textarea{width:100%}
 .tag.warn{background:var(--sun-soft);border-color:transparent;color:var(--sun-ink)}
 .tag.bad{background:var(--bad-soft);border-color:transparent;color:var(--bad)}
 .tag.info{background:var(--info-soft);border-color:transparent;color:var(--info)}
+.fol{font-size:14px}.fol b{font:600 17px/1 var(--head);color:var(--ink)}.fol.unknown{color:var(--soft);font-size:13px}
+.sizechips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
+.sizechip{border:1.5px solid var(--line);background:var(--cloud);border-radius:99px;padding:6px 12px;font:600 13px/1 var(--body);cursor:pointer;color:var(--ink)}
+.sizechip.on{border-color:var(--rain);background:var(--rain-soft)}
+.sizechip span{color:var(--soft);font-weight:500;margin-left:4px}
 .odds-good{color:var(--rain-dark)}.odds-info{color:var(--info)}.odds-warn{color:var(--sun-ink)}
 .score{font:600 14px/1 var(--head);width:44px;height:44px;flex:none;display:grid;place-items:center;border-radius:50%;background:var(--sky);color:var(--rain-dark)}
 .score.good{background:var(--rain-soft);color:var(--rain-dark)}.score.info{background:var(--info-soft);color:var(--info)}.score.warn{background:var(--sun-soft);color:var(--sun-ink)}
@@ -218,7 +223,13 @@ let FILTERS = { sections: [], statuses: [], asks: {} };
 const bf = { q: '', status: '', section: '', contact: '', image_status: '', affiliate_status: '', kind: '', researched: '', sort: 'odds', hide_done: '1' };
 let replyState = 'open', currentBrand = null, currentProspect = null;
 let TACTIC_INFO = {}, LINKS = { pages: [], hosts: [] }, CREATORS = null;
-const cf = { q: '', status: '', platform: '', contact: '', sort: 'odds' };
+const cf = { q: '', status: '', platform: '', size: '', contact: '', sort: 'odds' };
+const SIZE_OF = (f) => (f == null ? null : f >= 250000 ? 'large' : f >= 25000 ? 'medium' : 'small');
+const SIZE_NAME = { small: 'Small', medium: 'Medium', large: 'Large' };
+const SIZE_TONE = { small: 'good', medium: 'info', large: 'warn' };
+const followersBlock = (p) => p.followers == null
+  ? `<span class="fol unknown" title="${esc(p.followers_note || 'Not looked up yet')}">Followers unknown</span>`
+  : `<span class="fol" title="${esc(p.followers_note || '')}"><b>${fmtNum(p.followers)}</b> ${p.platform === 'youtube' ? 'subscribers' : 'followers'}</span> ${tag(SIZE_TONE[SIZE_OF(p.followers)], SIZE_NAME[SIZE_OF(p.followers)])}`;
 const fmtNum = (n) => n == null ? '' : n >= 1e6 ? (n / 1e6).toFixed(n >= 1e7 ? 0 : 1).replace(/\.0$/, '') + 'M' : n >= 1000 ? (n / 1000).toFixed(n >= 1e4 ? 0 : 1).replace(/\.0$/, '') + 'k' : String(n);
 const lf = { view: 'prospects', q: '', status: '', tactic: '', contact: '', sort: 'odds' };
 
@@ -1001,7 +1012,8 @@ function creatorCard(p) {
   const odds = p.odds == null ? `<div class="score" title="Closed">✓</div>` : `<div class="score ${oddsTone(p.odds)}" title="Estimated chance they answer">${p.odds}%</div>`;
   return `<div class="card brand" data-prospect="${p.id}">${odds}<div class="body">
     <div class="row"><span class="name" style="flex:1">${esc(p.name || p.handle)}</span>${tag(p.status)}</div>
-    <div class="small muted">${p.odds != null ? `<b class="odds-${oddsTone(p.odds)}">${oddsWord(p.odds)}</b> · ` : ''}${PLATFORM_ICON[p.platform] || ''} ${esc(CREATORS?.platformNames[p.platform] || p.platform)} ${esc(p.handle || '')}${p.followers != null ? ' · ' + fmtNum(p.followers) + ' followers' : ''}</div>
+    <div class="small muted">${PLATFORM_ICON[p.platform] || ''} ${esc(CREATORS?.platformNames[p.platform] || p.platform)} ${esc(p.handle || '')}${p.odds != null ? ` · <b class="odds-${oddsTone(p.odds)}">${oddsWord(p.odds)}</b>` : ''}</div>
+    <div style="margin-top:4px">${followersBlock(p)}</div>
     ${p.video_title ? `<div class="small ellipsis" style="margin-top:4px">“${esc(p.video_title)}”${p.posted_on ? ` <span class="muted">${esc(p.posted_on)}</span>` : ''}</div>` : ''}
     ${prods.length ? `<div style="margin-top:4px">${prods.slice(0, 3).map((x) => `<span class="tag">${esc(x.name)}</span>`).join('')}${prods.length > 3 ? `<span class="tag">+${prods.length - 3}</span>` : ''}</div>` : ''}
     <div class="small" style="margin-top:4px">${p.contact_email ? '✉ ' + esc(p.contact_email) : p.researched_at ? `<span class="muted">${p.platform === 'blog' ? 'No email published: try their contact page' : 'No email published: DM them'}</span>` : '<span class="muted">Contact not researched yet</span>'}</div>
@@ -1017,14 +1029,22 @@ async function loadCreators() {
     <p class="small muted" style="margin-top:-4px">Small creators who posted registry or product videos about gear on the site. Invite them to check the comparison page for what they featured and share it if it helps their viewers, and ask to feature them as "Recommended by creators". Every yes is logged in their own words before anything goes on the site.</p>
     <div class="kpis tight">${[[Object.values(st).reduce((a, b) => a + b, 0), 'Creators'], [CREATORS.contacted, 'Contacted'], [CREATORS.replied, 'Replied'],
       [ft.shared || 0, 'Shared the site'], [(ft.feature || 0) + (ft.embed || 0), 'OK to feature'], [st.won || 0, 'Said yes']].map(([v, l]) => `<div class="card kpi"><div class="v">${v}</div><div class="l">${l}</div></div>`).join('')}</div>
-    <div class="row" style="margin-bottom:12px"><a class="small" href="#" onclick="featuresDlg();return false">Permission log (${(ft.shared || 0) + (ft.feature || 0) + (ft.embed || 0)})</a></div>
+    <div class="sizechips">${[['', 'All sizes', Object.values(CREATORS.sizes).reduce((a, b) => a + b, 0)], ['small', 'Small · under 25k', CREATORS.sizes.small || 0],
+      ['medium', 'Medium · 25k to 250k', CREATORS.sizes.medium || 0], ['large', 'Large · 250k+', CREATORS.sizes.large || 0], ['unknown', 'Unknown', CREATORS.sizes.unknown || 0]]
+      .map(([k, l, n]) => `<button class="sizechip ${cf.size === k ? 'on' : ''}" data-size="${k}">${l}<span>${n}</span></button>`).join('')}</div>
+    <div class="row" style="margin-bottom:12px">
+      ${CREATORS.missingFollowers && S.claude.set ? `<button class="btn sm" id="fillFol" title="Unknown also includes creators already checked whose count isn't public">Look up follower counts (${CREATORS.missingFollowers} not checked yet)</button>` : ''}
+      <span class="spacer"></span><a class="small" href="#" onclick="featuresDlg();return false">Permission log (${(ft.shared || 0) + (ft.feature || 0) + (ft.embed || 0)})</a></div>
+    <div id="folProg"></div>
     <div class="filters" id="cFilters">
       <input type="search" placeholder="Search creators, videos, products" value="${esc(cf.q)}" data-cf="q">
       <select data-cf="status">${opt('', 'Open', cf.status)}${['found', 'ready', 'pitched', 'replied', 'won', 'lost', 'skipped', 'do_not_contact'].map((x) => opt(x, label(x), cf.status)).join('')}</select>
       <select data-cf="platform">${opt('', 'All platforms', cf.platform)}${Object.entries(CREATORS.platformNames).map(([k, v]) => opt(k, v + (CREATORS.platforms[k] ? ` (${CREATORS.platforms[k]})` : ''), cf.platform)).join('')}</select>
       <select data-cf="contact">${opt('', 'Email or DM', cf.contact)}${opt('email', 'Has email', cf.contact)}</select>
-      <select data-cf="sort">${opt('odds', 'Sort: most likely to answer', cf.sort)}${opt('followers', 'Sort: smallest first', cf.sort)}${opt('newest', 'Sort: newest', cf.sort)}${opt('name', 'Sort: A to Z', cf.sort)}</select>
+      <select data-cf="sort">${opt('odds', 'Sort: most likely to answer', cf.sort)}${opt('followers_desc', 'Sort: most followers', cf.sort)}${opt('followers', 'Sort: fewest followers', cf.sort)}${opt('newest', 'Sort: newest', cf.sort)}${opt('name', 'Sort: A to Z', cf.sort)}</select>
     </div><div id="cList"></div>`;
+  el.querySelectorAll('[data-size]').forEach((b) => (b.onclick = () => { cf.size = b.dataset.size; loadCreators(); }));
+  $('#fillFol')?.addEventListener('click', fillFollowers);
   await loadCreatorList();
 }
 async function loadCreatorList() {
@@ -1037,6 +1057,22 @@ let cSearchT;
 document.addEventListener('input', (e) => { if (e.target.dataset?.cf === 'q') { cf.q = e.target.value; clearTimeout(cSearchT); cSearchT = setTimeout(loadCreatorList, 300); } });
 document.addEventListener('change', (e) => { const k = e.target.dataset?.cf; if (k && k !== 'q') { cf[k] = e.target.value; loadCreatorList(); } });
 
+async function fillFollowers(e) {
+  const btn = e.target; btn.disabled = true;
+  const prog = $('#folProg'); let found = 0, checked = 0, misses = 0;
+  try {
+    for (;;) {
+      prog.innerHTML = `<div class="card small">Looking up follower counts… ${checked} checked, ${found} found. Keep this tab open.</div>`;
+      const r = await post('/api/creators/followers', {});
+      checked += r.checked; found += r.found;
+      if (!r.checked || !r.left) break;
+      misses = r.found ? 0 : misses + 1;
+      if (misses >= 3) break;
+    }
+    toast(`Found follower counts for ${found} of ${checked}. Type in any that are still missing from their profile.`);
+  } catch (err) { toast(err.message); }
+  prog.innerHTML = ''; loadCreators();
+}
 async function findCreatorsDlg() {
   if (!S.claude.set) return toast('Add your Claude key in Settings first.');
   if (!CREATORS) CREATORS = await api('/api/creators/summary');
@@ -1044,8 +1080,10 @@ async function findCreatorsDlg() {
     <label class="f">Look for videos about</label>
     <select id="fcType" style="width:100%"><option value="registry">Baby registries (what I registered for, must-haves)</option><option value="category">A category on the site</option><option value="brand">A brand on the site</option><option value="product">A specific product</option></select>
     <div id="fcFocusWrap" hidden><label class="f" id="fcFocusLabel">Category</label><input id="fcFocus" list="fcList" style="width:100%" autocomplete="off"><datalist id="fcList"></datalist></div>
+    <div class="grid2"><div><label class="f">Creator size</label><select id="fcSize" style="width:100%"><option value="any">A mix of sizes</option><option value="small">Small (under 25k followers)</option><option value="medium">Medium (25k to 250k)</option><option value="large">Large (250k and up)</option></select></div>
+      <div><label class="f">How many</label><select id="fcCount" style="width:100%"><option>15</option><option selected>30</option><option>45</option><option>60</option></select></div></div>
     <label class="f">Platform</label><select id="fcPlat" style="width:100%"><option value="any">Any video platform (YouTube, TikTok, Instagram)</option>${Object.entries(CREATORS.platformNames).filter(([k]) => k !== 'other').map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select>
-    <p class="small muted">Claude runs up to 7 web searches for small and mid-size creators (about 1k to 150k followers), matches the products they showed to your product pages, and adds up to 10 new ones. About a minute; roughly 20 to 40 cents of Claude usage (estimate).</p>
+    <p class="small muted">Claude searches in rounds of up to 15 creators, matches the products they showed to your product pages, then looks up every new creator's follower count and sorts them into small, medium and large. Size is a lean, not a filter: you'll see everyone it found, labeled by size. 30 creators takes a few minutes and roughly $1 to $2 of Claude usage (estimate). It stops early if a round finds nothing new.</p>
     <div class="row"><button class="btn primary" id="fcGo">Find creators</button></div><div id="fcOut"></div>`);
   const setList = () => {
     const t = $('#fcType').value;
@@ -1057,11 +1095,32 @@ async function findCreatorsDlg() {
   };
   $('#fcType').onchange = setList;
   $('#fcGo').onclick = async (e) => {
-    e.target.disabled = true; e.target.textContent = 'Searching… (about a minute)';
+    const target = Number($('#fcCount').value), size = $('#fcSize').value;
+    e.target.disabled = true;
+    let added = 0, dupes = 0, round = 0, empty = 0;
+    const ids = [];
     try {
-      const r = await post('/api/creators/find', { focus_type: $('#fcType').value, focus: $('#fcFocus').value, platform: $('#fcPlat').value });
-      $('#fcOut').innerHTML = `<div class="banner info" style="margin-top:12px"><span>Added ${r.added} new creator${r.added === 1 ? '' : 's'}${r.duplicates ? `, ${r.duplicates} already on your list` : ''}.</span></div>`;
-      cf.status = ''; cf.sort = 'newest';
+      while (added < target && round < Math.ceil(target / 15) + 2) {
+        round++;
+        e.target.textContent = `Round ${round}: searching… (${added} of ${target} so far)`;
+        const r = await post('/api/creators/find', { focus_type: $('#fcType').value, focus: $('#fcFocus').value, platform: $('#fcPlat').value,
+          size, count: Math.min(15, target - added) });
+        added += r.added; dupes += r.duplicates; ids.push(...r.ids);
+        empty = r.added ? 0 : empty + 1;
+        if (empty >= 2) break;
+      }
+      // Step 2: look up follower counts for the new ones (6 per call).
+      let missing = (await api('/api/creators?sort=newest')).filter((c) => ids.includes(c.id) && c.followers == null).map((c) => c.id);
+      for (let i = 0; i < missing.length; i += 6) {
+        e.target.textContent = `Looking up follower counts… (${Math.min(i + 6, missing.length)} of ${missing.length})`;
+        await post('/api/creators/followers', { ids: missing.slice(i, i + 6) }).catch(() => {});
+      }
+      const list = (await api('/api/creators?sort=newest')).filter((c) => ids.includes(c.id));
+      const by = list.reduce((a, c) => ((a[SIZE_OF(c.followers) || 'unknown'] = (a[SIZE_OF(c.followers) || 'unknown'] || 0) + 1), a), {});
+      $('#fcOut').innerHTML = `<div class="banner info" style="margin-top:12px"><span>Added ${added} new creator${added === 1 ? '' : 's'}${dupes ? `, ${dupes} already on your list` : ''}.
+        ${['small', 'medium', 'large'].filter((k) => by[k]).map((k) => `${by[k]} ${SIZE_NAME[k].toLowerCase()}`).join(', ')}${by.unknown ? `${by.small || by.medium || by.large ? ', ' : ''}${by.unknown} with no follower count yet` : ''}.
+        ${added < target ? ' Search ran out of new creators for this focus; try another category, brand or platform.' : ''}</span></div>`;
+      cf.status = ''; cf.size = size === 'any' ? '' : size; cf.sort = 'newest';
     } catch (err) { toast(err.message); }
     e.target.disabled = false; e.target.textContent = 'Find more';
   };
@@ -1096,14 +1155,14 @@ async function openCreator(id, d) {
   const featLabel = { shared: 'Shared the site', feature: 'OK to feature as recommended', embed: 'OK to show their video' };
   openDlg(`${p.name || p.handle}`, `
     <div class="row" style="margin-bottom:6px">${p.odds == null ? '<div class="score">✓</div>' : `<div class="score ${oddsTone(p.odds)}">${p.odds}%</div>`}
-      <div style="flex:1;min-width:200px"><div class="small muted">${p.odds != null ? '<b>' + oddsWord(p.odds) + '</b> · ' : ''}${esc(CREATORS.platformNames[p.platform] || p.platform)} ${esc(p.handle || '')}${p.followers != null ? ' · ' + fmtNum(p.followers) + ' followers' : ''}</div>
+      <div style="flex:1;min-width:200px"><div style="margin-bottom:2px">${followersBlock(p)}</div><div class="small muted">${p.odds != null ? '<b>' + oddsWord(p.odds) + '</b> · ' : ''}${esc(CREATORS.platformNames[p.platform] || p.platform)} ${esc(p.handle || '')}</div>
       ${p.video_url ? `<div class="small" style="margin-top:2px"><a href="${esc(p.video_url)}" target="_blank" rel="noopener">${esc(p.video_title || 'Their video')}</a>${p.posted_on ? ' · ' + esc(p.posted_on) : ''}</div>` : ''}
       ${p.why ? `<div class="small muted" style="margin-top:2px">${esc(p.why)}</div>` : ''}</div></div>
     ${prods.length ? `<div style="margin-bottom:6px">${prods.map((x) => `<a class="tag" href="${esc(x.url)}" target="_blank" rel="noopener" style="text-decoration:none">${esc(x.name)}</a>`).join('')}</div>` : ''}
     ${LINKS.warning ? `<div class="banner warn"><span>Your site address is still the workers.dev one. Fine for inviting creators to look, but hold "please share it" until the real domain is live so their link points to the right place.</span></div>` : ''}
     <div class="grid3">
       <div><label class="f">Status</label><select data-pf="status">${['found', 'ready', 'pitched', 'replied', 'won', 'lost', 'skipped', 'do_not_contact'].map((x) => opt(x, label(x), p.status)).join('')}</select></div>
-      <div><label class="f">Followers</label><input data-pf="followers" value="${p.followers ?? ''}" placeholder="12k"></div>
+      <div><label class="f">Followers${p.followers != null ? ` · ${SIZE_NAME[SIZE_OF(p.followers)]}` : ''}</label><input data-pf="followers" value="${p.followers ?? ''}" placeholder="e.g. 12k"><div class="small muted" style="margin-top:2px">${esc(p.followers_note || 'Type it in from their profile if missing')}</div></div>
       <div><label class="f">Follow up on</label><input type="date" data-pf="follow_up_on" value="${esc(p.follow_up_on || '')}"></div>
     </div>
     <label class="f">Our page to send them</label><input data-pf="target_url" list="ourPagesC" value="${esc(p.target_url || '')}" style="width:100%">

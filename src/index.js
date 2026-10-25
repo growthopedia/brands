@@ -29,7 +29,7 @@ async function ensureSchema(env) {
   }
   const lpCols = (await all(env, `PRAGMA table_info(link_prospects)`)).map((x) => x.name);
   for (const [c, typ] of [['kind', "TEXT NOT NULL DEFAULT 'site'"], ['platform', 'TEXT'], ['handle', 'TEXT'], ['followers', 'INTEGER'],
-    ['video_url', 'TEXT'], ['video_title', 'TEXT'], ['posted_on', 'TEXT'], ['products', 'TEXT']])
+    ['video_url', 'TEXT'], ['video_title', 'TEXT'], ['posted_on', 'TEXT'], ['products', 'TEXT'], ['followers_note', 'TEXT']])
     if (!lpCols.includes(c)) await env.DB.prepare(`ALTER TABLE link_prospects ADD COLUMN ${c} ${typ}`).run();
   await env.DB.prepare(`CREATE INDEX IF NOT EXISTS link_prospects_kind ON link_prospects(kind, status)`).run();
   for (const t of ['messages', 'replies']) {
@@ -111,6 +111,7 @@ export default {
       if (path === '/api/creators' && method === 'POST') return json(await C.addCreator(env, await body()));
       if (path === '/api/creators/find' && method === 'POST') return json(await C.findCreators(env, await body()));
       if (path === '/api/creators/features') return json(await C.listFeatures(env));
+      if (path === '/api/creators/followers' && method === 'POST') return json(await C.lookupFollowers(env, await body()));
       if (path === '/api/export/creators.csv') return csvResponse(await C.exportCreators(env), 'creators.csv');
       if (path === '/api/export/creator-features.json') return json(await C.featuresForSite(env));
       {
