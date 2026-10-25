@@ -63,6 +63,7 @@ const SHARED_INBOX = /^(info|hello|hi|contact|support|help|editor|editors|team|a
 // ---------- reply odds ----------
 export function prospectOdds(p) {
   if (['replied', 'won', 'lost', 'skipped', 'do_not_contact'].includes(p.status)) return null;
+  if (p.kind === 'creator') return creatorOdds(p);
   let s = (TACTICS[p.tactic] || TACTICS.other).base;
   const email = String(p.contact_email || '').toLowerCase();
   if (email) s += SHARED_INBOX.test(email) ? 8 : 16;
@@ -73,7 +74,20 @@ export function prospectOdds(p) {
   if (p.status === 'pitched') s -= 5;
   return Math.max(3, Math.min(97, Math.round(s)));
 }
-async function refreshProspectOdds(env, id) {
+// Smaller creators answer far more often. A published business email beats DMs.
+function creatorOdds(p) {
+  let s = 42;
+  const f = Number(p.followers) || 0;
+  if (f) s += f < 5000 ? 14 : f < 25000 ? 9 : f < 100000 ? 3 : f < 500000 ? -8 : -18;
+  const email = String(p.contact_email || '').toLowerCase();
+  if (email) s += /^(info|hello|hi|contact|support|team|admin)@/.test(email) ? 8 : 14;
+  else if (p.contact_url) s += 2;
+  else if (p.researched_at) s -= 8;
+  if (p.posted_on && p.posted_on >= new Date(Date.now() - 365 * 864e5).toISOString().slice(0, 10)) s += 5;
+  if (p.status === 'pitched') s -= 5;
+  return Math.max(3, Math.min(97, Math.round(s)));
+}
+export async function refreshProspectOdds(env, id) {
   const rows = id ? await all(env, `SELECT * FROM link_prospects WHERE id=?`, id) : await all(env, `SELECT * FROM link_prospects`);
   const stmts = rows.map((p) => env.DB.prepare(`UPDATE link_prospects SET odds=? WHERE id=?`).bind(prospectOdds(p), p.id));
   for (let i = 0; i < stmts.length; i += 200) await env.DB.batch(stmts.slice(i, i + 200));
@@ -118,31 +132,33 @@ export async function prelaunchWarning(env) {
 
 // ---------- list / get / update ----------
 export async function listProspects(env, url) {
-  const p = url.searchParams, where = [], params = [];
+  const p = url.searchParams, where = ['kind=?'], params = [p.get('kind') === 'creator' ? 'creator' : 'site'];
+  if (p.get('platform')) { where.push('platform=?'); params.push(p.get('platform')); }
   if (p.get('status')) { where.push('status=?'); params.push(p.get('status')); }
   else if (p.get('hide_done') !== '0') where.push(`status NOT IN ('skipped','do_not_contact','lost')`);
   if (p.get('tactic')) { where.push('tactic=?'); params.push(p.get('tactic')); }
   if (p.get('contact') === 'email') where.push(`COALESCE(contact_email,'')!=''`);
   if (p.get('contact') === 'none') where.push(`COALESCE(contact_email,'')='' AND COALESCE(contact_url,'')=''`);
-  if (p.get('q')) { const q = `%${p.get('q')}%`; where.push('(name LIKE ? OR domain LIKE ? OR page_title LIKE ? OR notes LIKE ?)'); params.push(q, q, q, q); }
+  if (p.get('q')) { const q = `%${p.get('q')}%`; where.push('(name LIKE ? OR domain LIKE ? OR page_title LIKE ? OR notes LIKE ? OR handle LIKE ? OR video_title LIKE ? OR products LIKE ?)'); params.push(q, q, q, q, q, q, q); }
   const sort = { odds: 'odds IS NULL, odds DESC, authority DESC', authority: 'authority IS NULL, authority DESC', newest: 'id DESC',
-    name: 'COALESCE(name, domain) COLLATE NOCASE', follow_up: 'follow_up_on IS NULL, follow_up_on' }[p.get('sort')] || 'odds IS NULL, odds DESC, authority DESC';
+    name: 'COALESCE(name, domain) COLLATE NOCASE', follow_up: 'follow_up_on IS NULL, follow_up_on', followers: 'followers IS NULL, followers' }[p.get('sort')] || 'odds IS NULL, odds DESC, authority DESC';
   return all(env, `SELECT id, url, domain, name, page_title, tactic, why, target_url, authority, contact_name, contact_email, contact_url, status, odds,
-    researched_at, follow_up_on, last_contacted_at FROM link_prospects ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY ${sort} LIMIT 1000`, ...params);
+    researched_at, follow_up_on, last_contacted_at, kind, platform, handle, followers, video_url, video_title, posted_on, products FROM link_prospects ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY ${sort} LIMIT 1000`, ...params);
 }
 
 export async function getProspect(env, id) {
   const prospect = await first(env, `SELECT * FROM link_prospects WHERE id=?`, id);
   if (!prospect) throw fail('Prospect not found', 404);
-  const [messages, replies, links] = await Promise.all([
+  const [messages, replies, links, features] = await Promise.all([
     all(env, `SELECT * FROM messages WHERE prospect_id=? AND status!='skipped' ORDER BY id`, id),
     all(env, `SELECT * FROM replies WHERE prospect_id=? ORDER BY received_at`, id),
     all(env, `SELECT * FROM links WHERE prospect_id=? ORDER BY id`, id),
+    all(env, `SELECT * FROM creator_features WHERE prospect_id=? ORDER BY id DESC`, id),
   ]);
-  return { prospect, messages, replies, links };
+  return { prospect, messages, replies, links, features };
 }
 
-const P_TEXT = ['name', 'url', 'page_title', 'why', 'target_url', 'contact_name', 'contact_email', 'contact_url', 'notes', 'tactic'];
+const P_TEXT = ['name', 'url', 'page_title', 'why', 'target_url', 'contact_name', 'contact_email', 'contact_url', 'notes', 'tactic', 'video_url', 'video_title', 'handle'];
 export async function updateProspect(env, id, body) {
   const p = await first(env, `SELECT * FROM link_prospects WHERE id=?`, id);
   if (!p) throw fail('Prospect not found', 404);
@@ -154,8 +170,8 @@ export async function updateProspect(env, id, body) {
   for (const k of P_TEXT) if (body[k] !== undefined) {
     let v = String(body[k] ?? '').trim().slice(0, 4000) || null;
     if (k === 'contact_email' && v) { v = v.toLowerCase(); if (!EMAIL_RE.test(v)) throw fail('That email address doesn\'t look right.'); }
-    if (k === 'tactic' && !TACTICS[v]) throw fail('Unknown tactic');
-    if (['url', 'target_url', 'contact_url'].includes(k) && v && !/^https?:\/\//i.test(v)) v = 'https://' + v;
+    if (k === 'tactic' && !TACTICS[v] && v !== 'creator') throw fail('Unknown tactic');
+    if (['url', 'target_url', 'contact_url', 'video_url'].includes(k) && v && !/^https?:\/\//i.test(v)) v = 'https://' + v;
     sets.push(`${k}=?`); params.push(v);
   }
   if (body.authority !== undefined) {
@@ -167,6 +183,12 @@ export async function updateProspect(env, id, body) {
     const d = String(body.follow_up_on || '');
     if (d && !/^\d{4}-\d{2}-\d{2}$/.test(d)) throw fail('Bad date');
     sets.push('follow_up_on=?'); params.push(d || null);
+  }
+  if (body.followers !== undefined) {
+    const f = String(body.followers ?? '').replace(/[,\s]/g, '').toLowerCase();
+    const n = f === '' ? null : /k$/.test(f) ? Number(f.slice(0, -1)) * 1000 : /m$/.test(f) ? Number(f.slice(0, -1)) * 1e6 : Number(f);
+    if (n != null && !(n >= 0)) throw fail('Followers should be a number like 12000 or 12k.');
+    sets.push('followers=?'); params.push(n == null ? null : Math.round(n));
   }
   if (!sets.length) return { ok: true };
   sets.push(`updated_at=datetime('now')`);
@@ -253,7 +275,7 @@ export async function findProspects(env, body) {
   const t = TACTICS[tactic];
   const s = await cfg(env);
   const topic = String(body.topic || '').trim().slice(0, 200) || 'baby gear in general';
-  const existing = (await all(env, `SELECT domain FROM link_prospects ORDER BY id DESC LIMIT 200`)).map((r) => r.domain);
+  const existing = (await all(env, `SELECT domain FROM link_prospects WHERE kind='site' ORDER BY id DESC LIMIT 200`)).map((r) => r.domain);
   const pages = await ourPages(env);
   const model = RESEARCH_MODEL(env);
   const tool = { type: 'web_search_20250305', name: 'web_search', max_uses: 6 };
@@ -426,7 +448,9 @@ export async function answerPitchReply(env, rep, body) {
     system: `You write Jen Cannizzo's answer to a website owner or writer who replied to her ${s.site_name} email. Write AS Jen, in first person ("I"),
 never about her in third person. Voice: warm, brief, plain, no em or en dashes.
 ABOUT THE SITE (only facts you may use): ${s.about}
-Answer exactly what they asked. If they added the link, thank them warmly. If they asked for payment, a paid placement, or a link swap, politely
+Answer exactly what they asked. If they added the link or shared the site, thank them warmly. If they agreed to be featured or to have their
+video shown on the site, thank them and confirm in one sentence exactly what you'll show (their video or quote, on which page, credited how)
+so there's a clear written record, and say they can ask to have it removed any time. If they asked for payment, a paid placement, or a link swap, politely
 decline in one friendly sentence ("I don't pay for or trade links") and thank them anyway. If they asked for guest post ideas, give two or three short, specific ones.
 Never invent facts. 30 to 120 words. No sign-off and no name at the end: the signature is added automatically.
 Return ONLY JSON: {"body": "..."}`,
@@ -576,8 +600,8 @@ export async function checkDueLinks(env, limit = 15) {
 // ---------- overview ----------
 export async function linkSummary(env) {
   const [byStatus, byTactic, links, warn, lost] = await Promise.all([
-    all(env, `SELECT status k, COUNT(*) n FROM link_prospects GROUP BY status`),
-    all(env, `SELECT tactic k, COUNT(*) n FROM link_prospects GROUP BY tactic`),
+    all(env, `SELECT status k, COUNT(*) n FROM link_prospects WHERE kind='site' GROUP BY status`),
+    all(env, `SELECT tactic k, COUNT(*) n FROM link_prospects WHERE kind='site' GROUP BY tactic`),
     all(env, `SELECT status, rel, COUNT(*) n FROM links GROUP BY status, rel`),
     prelaunchWarning(env),
     first(env, `SELECT COUNT(*) n FROM links WHERE status!='live' AND lost_at IS NOT NULL`),
@@ -591,7 +615,7 @@ export async function linkSummary(env) {
 
 export async function exportProspects(env) {
   return all(env, `SELECT name, domain, url, page_title, tactic, status, odds, authority, contact_name, contact_email, contact_url, target_url, why, notes,
-    last_contacted_at, follow_up_on FROM link_prospects ORDER BY odds DESC`);
+    last_contacted_at, follow_up_on FROM link_prospects WHERE kind='site' ORDER BY odds DESC`);
 }
 export async function exportLinks(env) {
   return all(env, `SELECT source_url, target_url, anchor, rel, status, first_seen_at, last_checked_at, lost_at, last_error, notes FROM links ORDER BY id`);

@@ -13,6 +13,7 @@ import { sendMessage, checkReplies, gmailCreds, saveGmailClient, disconnectGmail
 import { claudeKey, saveClaudeKey, researchBrand, draftEmail, rewriteMessage, draftAnswer, queueFollowups, ASKS } from './claude.js';
 import { handleEmail } from './inbound.js';
 import * as L from './links.js';
+import * as C from './creators.js';
 
 let schemaReady = false;
 async function ensureSchema(env) {
@@ -26,6 +27,11 @@ async function ensureSchema(env) {
     await env.DB.prepare(`CREATE INDEX IF NOT EXISTS brands_odds ON brands(reply_odds)`).run();
     await refreshOdds(env);
   }
+  const lpCols = (await all(env, `PRAGMA table_info(link_prospects)`)).map((x) => x.name);
+  for (const [c, typ] of [['kind', "TEXT NOT NULL DEFAULT 'site'"], ['platform', 'TEXT'], ['handle', 'TEXT'], ['followers', 'INTEGER'],
+    ['video_url', 'TEXT'], ['video_title', 'TEXT'], ['posted_on', 'TEXT'], ['products', 'TEXT']])
+    if (!lpCols.includes(c)) await env.DB.prepare(`ALTER TABLE link_prospects ADD COLUMN ${c} ${typ}`).run();
+  await env.DB.prepare(`CREATE INDEX IF NOT EXISTS link_prospects_kind ON link_prospects(kind, status)`).run();
   for (const t of ['messages', 'replies']) {
     const c = (await all(env, `PRAGMA table_info(${t})`)).map((x) => x.name);
     if (!c.includes('prospect_id')) {
@@ -99,6 +105,26 @@ export default {
       if (path === '/api/stats') return json(await stats(env));
       if (path === '/api/check-replies' && method === 'POST') return json(await checkReplies(env));
 
+      // ---- creators ----
+      if (path === '/api/creators/summary') return json(await C.creatorSummary(env));
+      if (path === '/api/creators' && method === 'GET') { const u = new URL(url); u.searchParams.set('kind', 'creator'); return json(await L.listProspects(env, u)); }
+      if (path === '/api/creators' && method === 'POST') return json(await C.addCreator(env, await body()));
+      if (path === '/api/creators/find' && method === 'POST') return json(await C.findCreators(env, await body()));
+      if (path === '/api/creators/features') return json(await C.listFeatures(env));
+      if (path === '/api/export/creators.csv') return csvResponse(await C.exportCreators(env), 'creators.csv');
+      if (path === '/api/export/creator-features.json') return json(await C.featuresForSite(env));
+      {
+        const cm = path.match(/^\/api\/creators\/(\d+)\/(research|draft|features)$/);
+        if (cm && method === 'POST') {
+          const id = Number(cm[1]);
+          if (cm[2] === 'research') return json(await C.researchCreator(env, id));
+          if (cm[2] === 'draft') return json(await C.draftCreatorNote(env, id, await body()));
+          return json(await C.addFeature(env, id, await body()));
+        }
+        const fm = path.match(/^\/api\/creator-features\/(\d+)\/revoke$/);
+        if (fm && method === 'POST') return json(await C.revokeFeature(env, Number(fm[1]), await body()));
+      }
+
       // ---- backlinks ----
       if (path === '/api/links/summary') return json(await L.linkSummary(env));
       if (path === '/api/links/prospects' && method === 'GET') return json(await L.listProspects(env, url));
@@ -146,7 +172,10 @@ export default {
         if (sub === 'skip') return json(await skipMessage(env, id));
         if (sub === 'rewrite') {
           const msg = await first(env, `SELECT * FROM messages WHERE id=?`, id);
-          if (msg?.prospect_id && msg.status === 'draft') return json(await L.rewritePitch(env, msg, await body()));
+          if (msg?.prospect_id && msg.status === 'draft') {
+            const lp = await first(env, `SELECT kind FROM link_prospects WHERE id=?`, msg.prospect_id);
+            return json(lp?.kind === 'creator' ? await C.rewriteCreatorNote(env, msg, await body()) : await L.rewritePitch(env, msg, await body()));
+          }
           return json(await rewriteMessage(env, id, await body()));
         }
       }
@@ -209,7 +238,7 @@ async function summary(env) {
 async function today(env) {
   const d = new Date().toLocaleDateString('en-CA', { timeZone: env.TIMEZONE || 'America/New_York' });
   const [replies, followups, nextUp, drafts, unmatched, linkFollowups] = await Promise.all([
-    all(env, `SELECT r.id, r.brand_id, r.prospect_id, r.from_email, r.subject, r.snippet, r.kind, r.received_at, COALESCE(b.name, lp.name, lp.domain) brand
+    all(env, `SELECT r.id, r.brand_id, r.prospect_id, r.from_email, r.subject, r.snippet, r.kind, r.received_at, COALESCE(b.name, lp.name, lp.domain) brand, lp.kind lp_kind
         FROM replies r LEFT JOIN brands b ON b.id=r.brand_id LEFT JOIN link_prospects lp ON lp.id=r.prospect_id
         WHERE r.handled=0 AND r.kind IN ('reply','optout') AND (r.brand_id IS NOT NULL OR r.prospect_id IS NOT NULL)
         ORDER BY r.received_at DESC LIMIT 20`),
@@ -518,7 +547,7 @@ async function listReplies(env, url) {
   const state = url.searchParams.get('state') || 'open';
   const where = state === 'unmatched' ? `r.brand_id IS NULL AND r.prospect_id IS NULL`
     : state === 'open' ? `r.handled=0 AND (r.brand_id IS NOT NULL OR r.prospect_id IS NOT NULL) AND r.kind IN ('reply','optout')` : '1=1';
-  return all(env, `SELECT r.*, COALESCE(b.name, lp.name, lp.domain) brand FROM replies r LEFT JOIN brands b ON b.id=r.brand_id
+  return all(env, `SELECT r.*, COALESCE(b.name, lp.name, lp.domain) brand, lp.kind lp_kind FROM replies r LEFT JOIN brands b ON b.id=r.brand_id
     LEFT JOIN link_prospects lp ON lp.id=r.prospect_id WHERE ${where} ORDER BY r.received_at DESC LIMIT 300`);
 }
 async function updateReply(env, rid, body) {
@@ -545,7 +574,7 @@ async function updateReply(env, rid, body) {
 // ---------- drafts ----------
 async function queue(env) {
   return all(env, `SELECT m.*, COALESCE(b.name, lp.name, lp.domain) brand, COALESCE(b.contact_name, lp.contact_name) contact_name,
-      COALESCE(b.contact_url, lp.contact_url) contact_url, COALESCE(b.domain, lp.domain) domain, b.product_count, b.sections, b.kind brand_kind, lp.tactic
+      COALESCE(b.contact_url, lp.contact_url) contact_url, COALESCE(b.domain, lp.domain) domain, b.product_count, b.sections, b.kind brand_kind, lp.tactic, lp.kind lp_kind, lp.platform, lp.handle, lp.url lp_url
     FROM messages m LEFT JOIN brands b ON b.id=m.brand_id AND m.brand_id > 0 LEFT JOIN link_prospects lp ON lp.id=m.prospect_id
     WHERE m.status='draft' AND (b.id IS NOT NULL OR lp.id IS NOT NULL)
     ORDER BY m.kind='reply' DESC, m.kind='followup' DESC, m.prospect_id IS NOT NULL, COALESCE(b.reply_odds, lp.odds, 0) DESC, m.id`);

@@ -197,3 +197,24 @@ CREATE TABLE IF NOT EXISTS links (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS links_checked ON links(last_checked_at);
+
+-- ---------- Creators ----------
+-- Creators live in link_prospects with kind='creator' (columns added by migration: kind, platform, handle,
+-- followers, video_url, video_title, posted_on, products). This table is the written record of what each
+-- creator agreed to: sharing the site, being featured as "recommended by", or having their video embedded.
+-- Rows are never deleted; revoking sets revoked_on.
+CREATE TABLE IF NOT EXISTS creator_features (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  prospect_id INTEGER NOT NULL,
+  kind TEXT NOT NULL,                              -- shared | feature | embed
+  url TEXT,                                        -- their post/video (shared or embedded)
+  quote TEXT,                                      -- exact words we may show (feature)
+  product_urls TEXT,                               -- JSON: our pages it goes on
+  permission_text TEXT,                            -- what they agreed to, in their own words
+  granted_by TEXT,
+  granted_on TEXT,
+  credit TEXT,                                     -- how to credit them, e.g. "@mamareviews on TikTok"
+  revoked_on TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS creator_features_prospect ON creator_features(prospect_id);

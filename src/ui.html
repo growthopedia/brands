@@ -184,6 +184,7 @@ dialog::backdrop{background:rgba(38,64,58,.4)}
     <button data-tab="replies"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Replies<span class="count" id="rCount" hidden></span></button>
     <button data-tab="affiliates" class="more-sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>Affiliates</button>
     <button data-tab="links"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2l2.4 4.9 5.4.8-3.9 3.8.9 5.4L12 14.4 7.2 17l.9-5.4L4.2 7.7l5.4-.8z"/><path d="M8 21h8"/></svg>Links</button>
+    <button data-tab="creators" class="more-sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="m16 10 5-3v10l-5-3"/></svg>Creators</button>
     <button data-tab="permissions" class="more">Image rights</button>
     <button data-tab="stats" class="more">Results</button>
     <button data-tab="guide" class="more">Guide</button>
@@ -198,6 +199,7 @@ dialog::backdrop{background:rgba(38,64,58,.4)}
   <section id="tab-replies" hidden></section>
   <section id="tab-affiliates" hidden></section>
   <section id="tab-links" hidden></section>
+  <section id="tab-creators" hidden></section>
   <section id="tab-permissions" hidden></section>
   <section id="tab-stats" hidden></section>
   <section id="tab-guide" class="guide" hidden></section>
@@ -215,7 +217,9 @@ let S = {}; // summary
 let FILTERS = { sections: [], statuses: [], asks: {} };
 const bf = { q: '', status: '', section: '', contact: '', image_status: '', affiliate_status: '', kind: '', researched: '', sort: 'odds', hide_done: '1' };
 let replyState = 'open', currentBrand = null, currentProspect = null;
-let TACTIC_INFO = {}, LINKS = { pages: [], hosts: [] };
+let TACTIC_INFO = {}, LINKS = { pages: [], hosts: [] }, CREATORS = null;
+const cf = { q: '', status: '', platform: '', contact: '', sort: 'odds' };
+const fmtNum = (n) => n == null ? '' : n >= 1e6 ? (n / 1e6).toFixed(n >= 1e7 ? 0 : 1).replace(/\.0$/, '') + 'M' : n >= 1000 ? (n / 1000).toFixed(n >= 1e4 ? 0 : 1).replace(/\.0$/, '') + 'k' : String(n);
 const lf = { view: 'prospects', q: '', status: '', tactic: '', contact: '', sort: 'odds' };
 
 async function api(path, opts = {}) {
@@ -239,7 +243,7 @@ const ASK_NAME = { images: 'Image permission', affiliate: 'Affiliate program', s
 const NETWORKS = { impact: 'Impact', awin: 'Awin / ShareASale', cj: 'CJ', avantlink: 'AvantLink', rakuten: 'Rakuten', partnerize: 'Partnerize', amazon: 'Amazon only', in_house: 'In-house', other: 'Other' };
 
 // ---------- tabs ----------
-const LOADERS = { today: loadToday, brands: loadBrands, drafts: loadDrafts, replies: loadReplies, affiliates: loadAffiliates, links: loadLinks, permissions: loadPermissions, stats: loadStats, guide: loadGuide };
+const LOADERS = { today: loadToday, brands: loadBrands, drafts: loadDrafts, replies: loadReplies, affiliates: loadAffiliates, links: loadLinks, creators: loadCreators, permissions: loadPermissions, stats: loadStats, guide: loadGuide };
 function showTab(name) {
   if (!LOADERS[name]) name = 'today';
   $$('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.tab === name));
@@ -249,7 +253,7 @@ function showTab(name) {
 }
 $('#tabs').addEventListener('click', (e) => { const b = e.target.closest('button[data-tab]'); if (b) showTab(b.dataset.tab); });
 function moreMenu() {
-  openDlg('More', [['affiliates', 'Affiliate programs'], ['permissions', 'Image rights'], ['stats', 'Results'], ['guide', 'Guide']]
+  openDlg('More', [['creators', 'Creators'], ['affiliates', 'Affiliate programs'], ['permissions', 'Image rights'], ['stats', 'Results'], ['guide', 'Guide']]
     .map(([t, l]) => `<button class="btn ghost" style="width:100%;justify-content:center;margin-bottom:10px" onclick="dlg.close();showTab('${t}')">${l}</button>`).join(''));
 }
 
@@ -640,8 +644,20 @@ async function openBrand(id) {
 // ---------- DRAFTS ----------
 function draftCard(m) {
   const blocked = S.sendBlocker;
-  const kindTag = (m.prospect_id ? tag('info', 'Link pitch' + (m.tactic && TACTIC_INFO[m.tactic] ? ': ' + TACTIC_INFO[m.tactic].name : '')) : '') +
+  const isDm = m.channel === 'dm', isCreator = m.lp_kind === 'creator' || m.tactic === 'creator';
+  const kindTag = (isCreator ? tag('info', `Creator${isDm ? ' DM' : ''}`) : m.prospect_id ? tag('info', 'Link pitch' + (m.tactic && TACTIC_INFO[m.tactic] ? ': ' + TACTIC_INFO[m.tactic].name : '')) : '') +
     (m.kind === 'followup' ? tag('info', 'Follow-up') : m.kind === 'reply' ? tag('good', 'Answer to their reply') : m.prospect_id ? '' : parse(m.asks, []).map((a) => tag('', ASK_NAME[a] || a)).join(''));
+  if (isDm) return `<div class="card" data-msg="${m.id}" data-dm="1" data-platform="${esc(m.platform || '')}">
+    <div class="row"><b style="flex:1;cursor:pointer" data-prospectlink="${m.prospect_id}">${esc(m.brand)}</b>${kindTag}</div>
+    <div class="small muted" style="margin-top:4px">Send this yourself as a direct message to ${esc(m.handle || '')}.${m.lp_url ? ` <a href="${esc(m.lp_url)}" target="_blank" rel="noopener">Open their profile</a>` : ''}</div>
+    <input class="m-to" type="hidden" value=""><input class="m-subj" type="hidden" value="${esc(m.subject)}">
+    <label class="f">Message</label><textarea class="m-body" style="min-height:140px">${esc(m.body)}</textarea>
+    ${S.claude.set ? `<div class="rewrite"><input class="m-fb" placeholder="Tell Claude what to change"><button class="btn sm" data-mact="rewrite">Rewrite</button></div>
+      <div class="chips">${['Shorter', 'More casual', 'Mention their video more', 'Drop the feature ask'].map((c) => `<button class="chip" data-chip="${esc(c)}">${esc(c)}</button>`).join('')}</div>` : ''}
+    <div class="row" style="margin-top:12px"><button class="btn primary" data-mact="copy">Copy message</button><button class="btn ghost" data-mact="manual">I sent it</button>
+      <span class="spacer"></span><button class="btn danger" data-mact="skip">Discard</button></div></div>`;
+  const chips = isCreator ? ['Shorter', 'More casual', 'Mention their video more', 'Drop the feature ask', 'Warmer opening']
+    : m.prospect_id ? ['Shorter', 'More casual', 'Warmer opening', 'More specific about their page'] : ['Shorter', 'More casual', 'Lead with the affiliate question', 'Warmer opening', 'Mention TikTok plans'];
   return `<div class="card" data-msg="${m.id}">
     <div class="row"><b style="flex:1;cursor:pointer" ${m.prospect_id ? `data-prospectlink="${m.prospect_id}"` : `data-brandlink="${m.brand_id}"`}>${esc(m.brand)}</b>${kindTag}</div>
     <label class="f">To</label><input class="m-to" value="${esc(m.to_email || '')}" placeholder="${m.contact_url ? 'No email: use their contact form, then press I sent it myself' : 'Add their email'}" style="width:100%">
@@ -650,7 +666,7 @@ function draftCard(m) {
     <label class="f">Email</label><textarea class="m-body">${esc(m.body)}</textarea>
     <div class="sig">${esc(S.signature || '')}</div>
     ${S.claude.set && m.kind !== 'followup' ? `<div class="rewrite"><input class="m-fb" placeholder="Tell Claude what to change, e.g. shorter, more casual, mention the Vista V3"><button class="btn sm" data-mact="rewrite">Rewrite</button></div>
-      <div class="chips">${['Shorter', 'More casual', 'Lead with the affiliate question', 'Warmer opening', 'Mention TikTok plans'].map((c) => `<button class="chip" data-chip="${esc(c)}">${esc(c)}</button>`).join('')}</div>` : ''}
+      <div class="chips">${chips.map((c) => `<button class="chip" data-chip="${esc(c)}">${esc(c)}</button>`).join('')}</div>` : ''}
     ${m.error ? `<div class="banner bad" style="margin-top:10px"><span>${esc(m.error)}</span></div>` : ''}
     <div class="row" style="margin-top:12px">
       <button class="btn primary" data-mact="send" ${blocked ? `disabled title="${esc(blocked)}"` : ''}>Approve & send</button>
@@ -684,6 +700,7 @@ document.addEventListener('click', async (e) => {
   const card = b.closest('[data-msg]'), id = card.dataset.msg, act = b.dataset.mact;
   const after = async () => { await refreshSummary(); if (currentProspect && dlg.open) openProspect(currentProspect); else if (currentBrand && dlg.open) openBrand(currentBrand); else loadDrafts(); };
   try {
+    if (act === 'copy' && card.dataset.dm) { await navigator.clipboard.writeText($('.m-body', card).value); toast('Copied. Paste it into the DM.'); return; }
     if (act === 'copy') {
       const text = `${$('.m-body', card).value}\n${S.signature}`;
       await navigator.clipboard.writeText(`Subject: ${$('.m-subj', card).value}\n\n${text}`); toast('Copied subject and email'); return;
@@ -691,7 +708,8 @@ document.addEventListener('click', async (e) => {
     b.disabled = true;
     if (act === 'send') { await saveDraft(card); await post(`/api/messages/${id}/send`); toast('Sent'); }
     if (act === 'manual') {
-      const how = prompt('How did you send it? (contact form, my Growthopedia inbox, Instagram DM…)', $('.m-to', card).value ? 'another inbox' : 'contact form');
+      const how = card.dataset.dm ? `${({ youtube: 'YouTube', tiktok: 'TikTok', instagram: 'Instagram', pinterest: 'Pinterest' })[card.dataset.platform] || 'Social'} DM`
+        : prompt('How did you send it? (contact form, my Growthopedia inbox, Instagram DM…)', $('.m-to', card).value ? 'another inbox' : 'contact form');
       if (how === null) { b.disabled = false; return; }
       await saveDraft(card); await post(`/api/messages/${id}/manual`, { how }); toast('Logged as sent');
     }
@@ -708,11 +726,11 @@ document.addEventListener('click', async (e) => {
 
 // ---------- REPLIES ----------
 function replyMini(r) {
-  return `<div class="card" data-reply="${r.id}"><div class="row"><b style="flex:1;cursor:pointer" ${r.prospect_id && !r.brand_id ? `data-prospectlink="${r.prospect_id}"` : `data-brandlink="${r.brand_id}"`}>${esc(r.brand || 'Unmatched')}</b>${r.prospect_id && !r.brand_id ? tag('info', 'Links') : ''}${tag(r.kind === 'reply' ? 'replied' : r.kind === 'optout' ? 'declined' : 'skipped', label(r.kind))}<span class="small muted">${when(r.received_at)}</span></div>
+  return `<div class="card" data-reply="${r.id}"><div class="row"><b style="flex:1;cursor:pointer" ${r.prospect_id && !r.brand_id ? `data-prospectlink="${r.prospect_id}"` : `data-brandlink="${r.brand_id}"`}>${esc(r.brand || 'Unmatched')}</b>${r.prospect_id && !r.brand_id ? tag('info', r.lp_kind === 'creator' ? 'Creator' : 'Links') : ''}${tag(r.kind === 'reply' ? 'replied' : r.kind === 'optout' ? 'declined' : 'skipped', label(r.kind))}<span class="small muted">${when(r.received_at)}</span></div>
     <div class="small muted">${esc(r.from_email || '')}${r.subject ? ' · ' + esc(r.subject) : ''}</div>
     <div style="margin-top:6px;white-space:pre-wrap">${esc(r.snippet || '')}</div>
     <div class="row" style="margin-top:10px">${(r.brand_id || r.prospect_id) && S.claude.set && r.kind === 'reply' ? `<button class="btn sm primary" data-ract="answer">Write an answer</button>` : ''}
-      ${r.brand_id ? `<button class="btn sm ghost" data-brandlink="${r.brand_id}">Open brand</button>` : r.prospect_id ? `<button class="btn sm ghost" data-prospectlink="${r.prospect_id}">Open site</button>` : ''}
+      ${r.brand_id ? `<button class="btn sm ghost" data-brandlink="${r.brand_id}">Open brand</button>` : r.prospect_id ? `<button class="btn sm ghost" data-prospectlink="${r.prospect_id}">${r.lp_kind === 'creator' ? 'Open creator' : 'Open site'}</button>` : ''}
       <button class="btn sm ghost" data-ract="done">Done</button></div></div>`;
 }
 async function loadReplies() {
@@ -889,6 +907,7 @@ async function openProspect(id) {
   if (!Object.keys(TACTIC_INFO).length) { const s = await api('/api/links/summary'); TACTIC_INFO = s.tacticInfo; LINKS = s; }
   const d = await api(`/api/links/prospects/${id}`).catch((e) => (toast(e.message), null));
   if (!d) return;
+  if (d.prospect.kind === 'creator') return openCreator(id, d);
   const { prospect: p, messages, replies, links } = d;
   const research = parse(p.research, null);
   const draft = messages.find((m) => m.status === 'draft');
@@ -973,6 +992,210 @@ async function openProspect(id) {
     if (b.dataset.pstatus === 'do_not_contact' && !confirm('Never email this site? Any draft is dropped.')) return;
     try { await post(`/api/links/prospects/${id}`, { status: b.dataset.pstatus }); closeDlg(); } catch (e) { toast(e.message); }
   });
+}
+
+// ---------- CREATORS ----------
+const PLATFORM_ICON = { youtube: '▶', tiktok: '♪', instagram: '◎', blog: '✎', pinterest: 'P', other: '•' };
+function creatorCard(p) {
+  const prods = parse(p.products, []);
+  const odds = p.odds == null ? `<div class="score" title="Closed">✓</div>` : `<div class="score ${oddsTone(p.odds)}" title="Estimated chance they answer">${p.odds}%</div>`;
+  return `<div class="card brand" data-prospect="${p.id}">${odds}<div class="body">
+    <div class="row"><span class="name" style="flex:1">${esc(p.name || p.handle)}</span>${tag(p.status)}</div>
+    <div class="small muted">${p.odds != null ? `<b class="odds-${oddsTone(p.odds)}">${oddsWord(p.odds)}</b> · ` : ''}${PLATFORM_ICON[p.platform] || ''} ${esc(CREATORS?.platformNames[p.platform] || p.platform)} ${esc(p.handle || '')}${p.followers != null ? ' · ' + fmtNum(p.followers) + ' followers' : ''}</div>
+    ${p.video_title ? `<div class="small ellipsis" style="margin-top:4px">“${esc(p.video_title)}”${p.posted_on ? ` <span class="muted">${esc(p.posted_on)}</span>` : ''}</div>` : ''}
+    ${prods.length ? `<div style="margin-top:4px">${prods.slice(0, 3).map((x) => `<span class="tag">${esc(x.name)}</span>`).join('')}${prods.length > 3 ? `<span class="tag">+${prods.length - 3}</span>` : ''}</div>` : ''}
+    <div class="small" style="margin-top:4px">${p.contact_email ? '✉ ' + esc(p.contact_email) : p.researched_at ? `<span class="muted">${p.platform === 'blog' ? 'No email published: try their contact page' : 'No email published: DM them'}</span>` : '<span class="muted">Contact not researched yet</span>'}</div>
+  </div></div>`;
+}
+async function loadCreators() {
+  const el = $('#tab-creators');
+  CREATORS = await api('/api/creators/summary');
+  const st = CREATORS.statuses, ft = CREATORS.features;
+  const opt = (v, txt, cur) => `<option value="${esc(v)}" ${v === cur ? 'selected' : ''}>${esc(txt)}</option>`;
+  el.innerHTML = `<div class="row" style="margin-bottom:10px"><h2 style="flex:1">Creators</h2>
+      <button class="btn sm primary" onclick="findCreatorsDlg()">Find creators</button><button class="btn sm ghost" onclick="addCreatorDlg()">Add one</button></div>
+    <p class="small muted" style="margin-top:-4px">Small creators who posted registry or product videos about gear on the site. Invite them to check the comparison page for what they featured and share it if it helps their viewers, and ask to feature them as "Recommended by creators". Every yes is logged in their own words before anything goes on the site.</p>
+    <div class="kpis tight">${[[Object.values(st).reduce((a, b) => a + b, 0), 'Creators'], [CREATORS.contacted, 'Contacted'], [CREATORS.replied, 'Replied'],
+      [ft.shared || 0, 'Shared the site'], [(ft.feature || 0) + (ft.embed || 0), 'OK to feature'], [st.won || 0, 'Said yes']].map(([v, l]) => `<div class="card kpi"><div class="v">${v}</div><div class="l">${l}</div></div>`).join('')}</div>
+    <div class="row" style="margin-bottom:12px"><a class="small" href="#" onclick="featuresDlg();return false">Permission log (${(ft.shared || 0) + (ft.feature || 0) + (ft.embed || 0)})</a></div>
+    <div class="filters" id="cFilters">
+      <input type="search" placeholder="Search creators, videos, products" value="${esc(cf.q)}" data-cf="q">
+      <select data-cf="status">${opt('', 'Open', cf.status)}${['found', 'ready', 'pitched', 'replied', 'won', 'lost', 'skipped', 'do_not_contact'].map((x) => opt(x, label(x), cf.status)).join('')}</select>
+      <select data-cf="platform">${opt('', 'All platforms', cf.platform)}${Object.entries(CREATORS.platformNames).map(([k, v]) => opt(k, v + (CREATORS.platforms[k] ? ` (${CREATORS.platforms[k]})` : ''), cf.platform)).join('')}</select>
+      <select data-cf="contact">${opt('', 'Email or DM', cf.contact)}${opt('email', 'Has email', cf.contact)}</select>
+      <select data-cf="sort">${opt('odds', 'Sort: most likely to answer', cf.sort)}${opt('followers', 'Sort: smallest first', cf.sort)}${opt('newest', 'Sort: newest', cf.sort)}${opt('name', 'Sort: A to Z', cf.sort)}</select>
+    </div><div id="cList"></div>`;
+  await loadCreatorList();
+}
+async function loadCreatorList() {
+  const p = new URLSearchParams(Object.entries(cf).filter(([, v]) => v));
+  const list = await api('/api/creators?' + p);
+  $('#cList').innerHTML = `<div class="small muted" style="margin-bottom:8px">${list.length} creator${list.length === 1 ? '' : 's'}</div>` +
+    (list.map(creatorCard).join('') || `<div class="empty">No creators yet. Press <b>Find creators</b>: pick a category, brand or product and Claude searches YouTube, TikTok, Instagram and blogs.</div>`);
+}
+let cSearchT;
+document.addEventListener('input', (e) => { if (e.target.dataset?.cf === 'q') { cf.q = e.target.value; clearTimeout(cSearchT); cSearchT = setTimeout(loadCreatorList, 300); } });
+document.addEventListener('change', (e) => { const k = e.target.dataset?.cf; if (k && k !== 'q') { cf[k] = e.target.value; loadCreatorList(); } });
+
+async function findCreatorsDlg() {
+  if (!S.claude.set) return toast('Add your Claude key in Settings first.');
+  if (!CREATORS) CREATORS = await api('/api/creators/summary');
+  openDlg('Find creators', `
+    <label class="f">Look for videos about</label>
+    <select id="fcType" style="width:100%"><option value="registry">Baby registries (what I registered for, must-haves)</option><option value="category">A category on the site</option><option value="brand">A brand on the site</option><option value="product">A specific product</option></select>
+    <div id="fcFocusWrap" hidden><label class="f" id="fcFocusLabel">Category</label><input id="fcFocus" list="fcList" style="width:100%" autocomplete="off"><datalist id="fcList"></datalist></div>
+    <label class="f">Platform</label><select id="fcPlat" style="width:100%"><option value="any">Any video platform (YouTube, TikTok, Instagram)</option>${Object.entries(CREATORS.platformNames).filter(([k]) => k !== 'other').map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select>
+    <p class="small muted">Claude runs up to 7 web searches for small and mid-size creators (about 1k to 150k followers), matches the products they showed to your product pages, and adds up to 10 new ones. About a minute; roughly 20 to 40 cents of Claude usage (estimate).</p>
+    <div class="row"><button class="btn primary" id="fcGo">Find creators</button></div><div id="fcOut"></div>`);
+  const setList = () => {
+    const t = $('#fcType').value;
+    $('#fcFocusWrap').hidden = t === 'registry';
+    $('#fcFocusLabel').textContent = { category: 'Category', brand: 'Brand', product: 'Product name' }[t] || '';
+    $('#fcFocus').value = '';
+    $('#fcList').innerHTML = (t === 'category' ? CREATORS.sections : t === 'brand' ? CREATORS.brands : []).map((x) => `<option value="${esc(x.v)}">`).join('');
+    $('#fcFocus').placeholder = t === 'product' ? 'e.g. UPPAbaby Vista V3' : 'Start typing…';
+  };
+  $('#fcType').onchange = setList;
+  $('#fcGo').onclick = async (e) => {
+    e.target.disabled = true; e.target.textContent = 'Searching… (about a minute)';
+    try {
+      const r = await post('/api/creators/find', { focus_type: $('#fcType').value, focus: $('#fcFocus').value, platform: $('#fcPlat').value });
+      $('#fcOut').innerHTML = `<div class="banner info" style="margin-top:12px"><span>Added ${r.added} new creator${r.added === 1 ? '' : 's'}${r.duplicates ? `, ${r.duplicates} already on your list` : ''}.</span></div>`;
+      cf.status = ''; cf.sort = 'newest';
+    } catch (err) { toast(err.message); }
+    e.target.disabled = false; e.target.textContent = 'Find more';
+  };
+}
+function addCreatorDlg() {
+  openDlg('Add a creator', `<div class="grid2"><div><label class="f">Platform</label><select id="acPlat">${Object.entries(CREATORS?.platformNames || { youtube: 'YouTube', tiktok: 'TikTok', instagram: 'Instagram', blog: 'Blog' }).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select></div>
+    <div><label class="f">Handle</label><input id="acHandle" placeholder="@name"></div></div>
+    <label class="f">Name</label><input id="acName" style="width:100%"><label class="f">Profile link</label><input id="acProfile" style="width:100%">
+    <label class="f">The video or post</label><input id="acVideo" style="width:100%"><label class="f">Video title</label><input id="acTitle" style="width:100%">
+    <div class="grid2"><div><label class="f">Followers</label><input id="acFol" placeholder="12k"></div><div><label class="f">Email (optional)</label><input id="acEmail"></div></div>
+    <div class="row" style="margin-top:12px"><button class="btn primary" id="acGo">Add</button></div>`);
+  $('#acGo').onclick = async () => {
+    try { const r = await post('/api/creators', { platform: $('#acPlat').value, handle: $('#acHandle').value, name: $('#acName').value, profile_url: $('#acProfile').value,
+      video_url: $('#acVideo').value, video_title: $('#acTitle').value, followers: $('#acFol').value, contact_email: $('#acEmail').value });
+      toast(r.duplicate ? 'Already on your list' : 'Added'); openProspect(r.id); } catch (e) { toast(e.message); }
+  };
+}
+
+async function openCreator(id, d) {
+  currentProspect = id; currentBrand = null;
+  if (!CREATORS) CREATORS = await api('/api/creators/summary');
+  const { prospect: p, messages, replies, features } = d;
+  const research = parse(p.research, null), prods = parse(p.products, []);
+  const draft = messages.find((m) => m.status === 'draft');
+  const opt = (v, txt, cur) => `<option value="${esc(v)}" ${v === cur ? 'selected' : ''}>${esc(txt)}</option>`;
+  const lk = (href, txt, find) => `<a class="lk ${find ? 'find' : ''}" href="${esc(href)}" target="_blank" rel="noopener">${esc(txt)}</a>`;
+  const g = (x) => `https://www.google.com/search?q=${q(x)}`;
+  const events = [
+    ...messages.filter((m) => m.status !== 'draft').map((m) => ({ at: m.sent_at || m.created_at, cls: 'out', h: m.status === 'sent_manual' ? `You sent (${m.channel || 'by hand'})` : 'You emailed', t: `${m.channel === 'dm' || /DM/.test(m.channel || '') ? '' : m.subject + '\n\n'}${m.body}` })),
+    ...replies.map((r) => ({ at: r.received_at, cls: 'in', h: `${label(r.kind)} from ${r.from_email || 'them'}`, t: r.body || r.snippet || '' })),
+  ].sort((x, y) => String(y.at).localeCompare(String(x.at)));
+  const featLabel = { shared: 'Shared the site', feature: 'OK to feature as recommended', embed: 'OK to show their video' };
+  openDlg(`${p.name || p.handle}`, `
+    <div class="row" style="margin-bottom:6px">${p.odds == null ? '<div class="score">✓</div>' : `<div class="score ${oddsTone(p.odds)}">${p.odds}%</div>`}
+      <div style="flex:1;min-width:200px"><div class="small muted">${p.odds != null ? '<b>' + oddsWord(p.odds) + '</b> · ' : ''}${esc(CREATORS.platformNames[p.platform] || p.platform)} ${esc(p.handle || '')}${p.followers != null ? ' · ' + fmtNum(p.followers) + ' followers' : ''}</div>
+      ${p.video_url ? `<div class="small" style="margin-top:2px"><a href="${esc(p.video_url)}" target="_blank" rel="noopener">${esc(p.video_title || 'Their video')}</a>${p.posted_on ? ' · ' + esc(p.posted_on) : ''}</div>` : ''}
+      ${p.why ? `<div class="small muted" style="margin-top:2px">${esc(p.why)}</div>` : ''}</div></div>
+    ${prods.length ? `<div style="margin-bottom:6px">${prods.map((x) => `<a class="tag" href="${esc(x.url)}" target="_blank" rel="noopener" style="text-decoration:none">${esc(x.name)}</a>`).join('')}</div>` : ''}
+    ${LINKS.warning ? `<div class="banner warn"><span>Your site address is still the workers.dev one. Fine for inviting creators to look, but hold "please share it" until the real domain is live so their link points to the right place.</span></div>` : ''}
+    <div class="grid3">
+      <div><label class="f">Status</label><select data-pf="status">${['found', 'ready', 'pitched', 'replied', 'won', 'lost', 'skipped', 'do_not_contact'].map((x) => opt(x, label(x), p.status)).join('')}</select></div>
+      <div><label class="f">Followers</label><input data-pf="followers" value="${p.followers ?? ''}" placeholder="12k"></div>
+      <div><label class="f">Follow up on</label><input type="date" data-pf="follow_up_on" value="${esc(p.follow_up_on || '')}"></div>
+    </div>
+    <label class="f">Our page to send them</label><input data-pf="target_url" list="ourPagesC" value="${esc(p.target_url || '')}" style="width:100%">
+    <datalist id="ourPagesC">${prods.map((x) => `<option value="${esc(x.url)}">${esc(x.name)}</option>`).join('')}${(LINKS.pages || []).map((x) => `<option value="${esc(x.url)}">${esc(x.label)}</option>`).join('')}</datalist>
+
+    <div class="sec"><h3 style="flex:1">Contact</h3>${S.claude.set ? `<button class="btn sm" id="cRes">${p.researched_at ? 'Research again' : 'Find contact with Claude'}</button>` : ''}</div>
+    ${research ? `<div class="research"><b>Claude found</b> <span class="small muted">${when(p.researched_at)}</span>${research.notes ? `<div style="margin-top:4px">${esc(research.notes)}</div>` : ''}
+      <ul>${[research.email && `Email: ${esc(research.email)}${research.email_source ? ` · <a href="${esc(research.email_source)}" target="_blank" rel="noopener">where it's published</a>` : ''}`,
+        research.contact_url && `Link in bio / site: <a href="${esc(research.contact_url)}" target="_blank" rel="noopener">open</a>`,
+        research.manager && `Manager / agency: ${esc(research.manager)}`,
+        (research.other_platforms || []).length && `Also on: ${esc(research.other_platforms.join(', '))}`].filter(Boolean).map((x) => `<li>${x}</li>`).join('')}</ul></div>` : ''}
+    <div class="grid2">
+      <div><label class="f">Email</label><input data-pf="contact_email" value="${esc(p.contact_email || '')}"></div>
+      <div><label class="f">First name</label><input data-pf="contact_name" value="${esc(p.contact_name || '')}"></div>
+      <div><label class="f">Link in bio / website</label><input data-pf="contact_url" value="${esc(p.contact_url || '')}"></div>
+      <div><label class="f">Video link</label><input data-pf="video_url" value="${esc(p.video_url || '')}"></div>
+    </div>
+    <div class="links" style="margin-top:10px">${lk(p.url, 'Profile')}${p.video_url ? lk(p.video_url, 'Video') : ''}${p.contact_url ? lk(p.contact_url, 'Link in bio') : ''}
+      ${lk(g(`"${p.handle}" email OR contact OR collab`), 'Find their email', 1)}${lk(g(`"${p.handle}" baby`), 'Their other baby posts', 1)}</div>
+
+    <div class="sec"><h3>Message</h3></div>
+    ${draft ? '<div id="cDraft"></div>' : `<div class="card" style="box-shadow:none">
+      <div class="small muted" style="margin-bottom:8px">What to ask (each one is optional for them):</div>
+      <div class="checks">${[['share', 'Check it out & share if helpful'], ['feature', 'Feature them as "recommended by"'], ['embed', 'Show their video on our page']].map(([k, l]) => `<label class="chk"><input type="checkbox" name="cask" value="${k}" ${k !== 'embed' ? 'checked' : ''}> ${l}</label>`).join('')}</div>
+      <input id="cNote" style="width:100%;margin-top:10px" placeholder="Anything to mention? (optional) e.g. loved the fold demo at the end">
+      <div class="row" style="margin-top:10px">${p.platform === 'blog' ? `<button class="btn primary" data-cdraft="email">Write email</button>`
+        : `<button class="btn primary" data-cdraft="${p.contact_email ? 'email' : 'dm'}">${p.contact_email ? 'Write email' : 'Write DM'}</button>
+        <button class="btn ghost" data-cdraft="${p.contact_email ? 'dm' : 'email'}">${p.contact_email ? 'Write a DM instead' : 'Write an email instead'}</button>`}</div></div>`}
+
+    <div class="sec"><h3 style="flex:1">What they agreed to</h3></div>
+    ${features.map((f) => `<div class="card" style="box-shadow:none;padding:12px"><div class="row"><b style="flex:1">${esc(featLabel[f.kind] || f.kind)}</b>${f.revoked_on ? tag('declined', 'Revoked ' + f.revoked_on) : tag('approved', esc(f.granted_on || 'Active'))}</div>
+      ${f.permission_text ? `<div style="white-space:pre-wrap;margin-top:4px">"${esc(f.permission_text)}"</div>` : ''}
+      <div class="small muted" style="margin-top:4px">${[f.url && `<a href="${esc(f.url)}" target="_blank" rel="noopener">${f.kind === 'shared' ? 'Their post' : 'Video'}</a>`, f.quote && `Quote: "${esc(f.quote)}"`, f.credit && 'Credit: ' + esc(f.credit),
+        parse(f.product_urls, []).length && 'On: ' + parse(f.product_urls, []).map((u) => esc(u.replace(/^https?:\/\/[^/]+/, ''))).join(', ')].filter(Boolean).join(' · ')}</div>
+      ${f.revoked_on || f.kind === 'shared' ? '' : `<button class="btn sm danger" style="margin-top:6px" data-frevoke="${f.id}">They asked to remove it</button>`}</div>`).join('')}
+    <details ${p.status === 'replied' && !features.length ? 'open' : ''}><summary class="small">Log what they said yes to</summary>
+      <label class="f">They agreed to</label><select id="fKind" style="width:100%"><option value="feature">Be featured as "recommended by" on our page</option><option value="embed">Have their video shown on our page</option><option value="shared">They shared the site (no permission needed)</option></select>
+      <label class="f">What they said, pasted in their exact words (your permission record)</label><textarea id="fPerm" style="min-height:90px"></textarea>
+      <div class="grid2"><div><label class="f">Date they said it</label><input type="date" id="fOn" value="${todayStr()}"></div>
+        <div><label class="f">Credit as</label><input id="fCredit" value="${esc(`${p.handle || p.name} on ${CREATORS.platformNames[p.platform] || p.platform}`)}"></div></div>
+      <label class="f">Link (their video, or the post where they shared the site)</label><input id="fUrl" style="width:100%" value="${esc(p.video_url || '')}">
+      <label class="f">Quote we may show (optional, only words they gave you)</label><input id="fQuote" style="width:100%">
+      <label class="f">Our pages it goes on</label><input id="fPages" style="width:100%" value="${esc(prods.map((x) => x.url).join(' ') || p.target_url || '')}">
+      <button class="btn primary" style="margin-top:10px" id="fGo">Save</button></details>
+
+    <details style="margin-top:14px"><summary class="small">Paste a reply they sent (DM, comment, or another inbox)</summary>
+      <label class="f">What they said</label><textarea id="crText" style="min-height:100px"></textarea><button class="btn sm" style="margin-top:8px" id="crGo">Save reply</button></details>
+    <div class="sec"><h3>Notes</h3></div><textarea data-pf="notes" style="min-height:80px">${esc(p.notes || '')}</textarea>
+    <div class="sec"><h3>History</h3></div>
+    <div class="timeline">${events.map((e) => `<div class="ev ${e.cls}"><div class="small"><b>${esc(e.h)}</b> <span class="muted">${when(e.at)}</span></div><div class="t">${esc(e.t)}</div></div>`).join('') || '<div class="muted small">Nothing yet.</div>'}</div>
+    <div class="row" style="margin-top:18px"><button class="btn sm danger" data-pstatus="skipped">Skip</button><button class="btn sm danger" data-pstatus="lost">They said no</button><button class="btn sm danger" data-pstatus="do_not_contact">Do not contact</button></div>`);
+  if (draft) $('#cDraft').innerHTML = draftCard({ ...draft, brand: p.name || p.handle, lp_kind: 'creator', platform: p.platform, handle: p.handle, lp_url: p.url });
+  const body = $('#dlgBody');
+  body.querySelectorAll('[data-pf]').forEach((inp) => inp.addEventListener('change', async () => {
+    try { await post(`/api/links/prospects/${id}`, { [inp.dataset.pf]: inp.value }); toast('Saved'); if (['status', 'contact_email', 'followers'].includes(inp.dataset.pf)) openProspect(id); } catch (e) { toast(e.message); }
+  }));
+  $('#cRes')?.addEventListener('click', async (e) => {
+    e.target.disabled = true; e.target.textContent = 'Searching… (about 30 seconds)';
+    try { const r = await post(`/api/creators/${id}/research`); toast(r.foundEmail ? `Found ${r.foundEmail}` : 'No published email. A DM is the way in.'); openProspect(id); }
+    catch (err) { toast(err.message); e.target.disabled = false; }
+  });
+  body.querySelectorAll('[data-cdraft]').forEach((b) => b.onclick = async () => {
+    const asks = $$('input[name=cask]:checked', body).map((x) => x.value);
+    b.disabled = true; b.textContent = 'Writing…';
+    try { await post(`/api/creators/${id}/draft`, { channel: b.dataset.cdraft, asks, note: $('#cNote').value }); await refreshSummary(); openProspect(id); }
+    catch (err) { toast(err.message); b.disabled = false; }
+  });
+  $('#fGo').onclick = async () => {
+    try { await post(`/api/creators/${id}/features`, { kind: $('#fKind').value, permission_text: $('#fPerm').value, granted_on: $('#fOn').value, credit: $('#fCredit').value,
+      url: $('#fUrl').value, quote: $('#fQuote').value, product_urls: $('#fPages').value }); toast('Saved'); openProspect(id); } catch (e) { toast(e.message); }
+  };
+  body.querySelectorAll('[data-frevoke]').forEach((b) => b.onclick = async () => {
+    const note = prompt('What did they say? Take it off the site.', ''); if (note === null) return;
+    try { await post(`/api/creator-features/${b.dataset.frevoke}/revoke`, { note }); openProspect(id); } catch (e) { toast(e.message); }
+  });
+  $('#crGo').onclick = async () => {
+    try { await post(`/api/links/prospects/${id}/reply`, { text: $('#crText').value }); await refreshSummary(); openProspect(id); } catch (e) { toast(e.message); }
+  };
+  body.querySelectorAll('[data-pstatus]').forEach((b) => b.onclick = async () => {
+    if (b.dataset.pstatus === 'do_not_contact' && !confirm('Never contact this creator? Any draft is dropped.')) return;
+    try { await post(`/api/links/prospects/${id}`, { status: b.dataset.pstatus }); closeDlg(); } catch (e) { toast(e.message); }
+  });
+}
+async function featuresDlg() {
+  const list = await api('/api/creators/features');
+  const featLabel = { shared: 'Shared the site', feature: 'Featured as recommended', embed: 'Video shown' };
+  openDlg('Creator permission log', `<p class="small muted">Only creators listed here as active go on the site. Keep their original message too.
+    <a href="/api/export/creator-features.json">Download the list for the site</a></p>
+    ${list.map((f) => `<div class="card" style="box-shadow:none;padding:12px;cursor:pointer" data-prospectlink="${f.prospect_id}"><div class="row"><b style="flex:1">${esc(f.creator)} <span class="muted small">${esc(f.handle || '')}</span></b>
+      ${f.revoked_on ? tag('declined', 'Revoked') : tag('approved', featLabel[f.kind])}</div>
+      ${f.permission_text ? `<div class="small" style="white-space:pre-wrap;margin-top:4px">"${esc(f.permission_text)}"</div>` : ''}<div class="small muted">${esc(f.granted_on || '')}</div></div>`).join('')
+      || '<div class="empty">Nothing yet. When a creator says yes, open them and log it.</div>'}`);
 }
 
 // ---------- AFFILIATES ----------
@@ -1069,7 +1292,7 @@ function openSettings() {
     <div class="progress" id="csvBar" hidden><i style="width:0"></i></div>
 
     <h3 style="margin-top:22px">Exports</h3>
-    <div class="links"><a class="lk" href="/api/export/brands.csv">All brands</a><a class="lk" href="/api/export/contacts.csv">Contacts</a><a class="lk" href="/api/export/affiliates.csv">Affiliate programs</a><a class="lk" href="/api/export/permissions.csv">Image permissions</a><a class="lk" href="/api/export/link-prospects.csv">Link prospects</a><a class="lk" href="/api/export/links.csv">Won links</a></div>`);
+    <div class="links"><a class="lk" href="/api/export/brands.csv">All brands</a><a class="lk" href="/api/export/contacts.csv">Contacts</a><a class="lk" href="/api/export/affiliates.csv">Affiliate programs</a><a class="lk" href="/api/export/permissions.csv">Image permissions</a><a class="lk" href="/api/export/link-prospects.csv">Link prospects</a><a class="lk" href="/api/export/links.csv">Won links</a><a class="lk" href="/api/export/creators.csv">Creators</a><a class="lk" href="/api/export/creator-features.json">Creator features (for the site)</a></div>`);
   $('#setSave').onclick = async () => {
     const body = {}; $$('[data-set]').forEach((i) => (body[i.dataset.set] = i.value));
     try { await post('/api/settings', body); await refreshSummary(); toast('Saved'); openSettings(); } catch (e) { toast(e.message); }
