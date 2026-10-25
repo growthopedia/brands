@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>CribPicks Brands</title>
+<title>Cribpicks Brands</title>
 <meta name="robots" content="noindex, nofollow">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -15,7 +15,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Brands">
 <style>
-/* CribPicks "misty morning": sage sky, white clouds, butter-yellow sun. */
+/* Cribpicks "misty morning": sage sky, white clouds, butter-yellow sun. */
 :root{
   color-scheme:light;
   --sky:#e3ece6;--sky-deep:#cbdcd2;--mist:#f3f6f2;--cloud:#fff;--ink:#26403a;--soft:#5a6f68;--line:#d9e4dc;
@@ -177,7 +177,7 @@ dialog::backdrop{background:rgba(38,64,58,.4)}
 <body>
 <header>
   <div class="top">
-    <a class="logo" href="#today"><img src="/icon.svg" alt=""><span id="siteName">CribPicks</span><small>Brands</small></a>
+    <a class="logo" href="#today"><img src="/icon.svg" alt=""><span id="siteName">Cribpicks</span><small>Brands</small></a>
     <div class="spacer"></div>
     <span class="pill hide-sm" id="sentPill"></span>
     <button class="iconbtn" title="Settings" aria-label="Settings" onclick="openSettings()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
@@ -1319,7 +1319,7 @@ function openSettings() {
   const f = (k, l, ph = '', type = 'text') => `<label class="f">${l}</label><input data-set="${k}" type="${type}" value="${esc(s[k] ?? '')}" placeholder="${esc(ph)}">`;
   openDlg('Settings', `
     <h3>The site</h3>
-    <div class="grid2">${f('site_name', 'Site name', 'CribPicks')}${f('site_url', 'Site address (goes in your signature)', 'https://cribpicks.com')}</div>
+    <div class="grid2">${f('site_name', 'Site name', 'Cribpicks')}${f('site_url', 'Site address (goes in your signature)', 'https://cribpicks.com')}</div>
     <label class="f">About the site: the only facts Claude may use in emails. Keep it honest and update it at launch.</label>
     <textarea data-set="about" style="min-height:120px">${esc(s.about || '')}</textarea>
 

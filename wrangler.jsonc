@@ -1,5 +1,5 @@
 {
-  // CribPicks brand outreach — deployed by Cloudflare Workers Builds on every push to main.
+  // Cribpicks brand outreach — deployed by Cloudflare Workers Builds on every push to main.
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "brands",
   "main": "src/index.js",
@@ -22,7 +22,7 @@
 
   "vars": {
     // Defaults only. Everything below can be changed in the app under Settings, no code needed.
-    "SITE_NAME": "CribPicks",
+    "SITE_NAME": "Cribpicks",
     "SITE_URL": "https://cribpicks.com",
     "SENDER_NAME": "Jen Cannizzo",
     // The new domain's inbox. Leave empty until it exists; set it in Settings.

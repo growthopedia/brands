@@ -1,4 +1,4 @@
-# CribPicks brand outreach
+# Cribpicks brand outreach
 
 Asks baby gear brands for **image permission, affiliate access, samples, TikTok features and spec data**, and keeps the
 written record of every yes. Also a **backlink builder** (finds link prospects, writes pitches, checks won links stay live) and **creator outreach** (finds small creators who posted about products on the site, writes emails/DMs, and logs their permission to be featured). One card per brand on the site, ranked by how likely each brand is to reply, then by value.
