@@ -193,6 +193,7 @@ dialog::backdrop{background:rgba(47,59,44,.4)}
     <button data-tab="affiliates" class="more-sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>Affiliates</button>
     <button data-tab="links"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2l2.4 4.9 5.4.8-3.9 3.8.9 5.4L12 14.4 7.2 17l.9-5.4L4.2 7.7l5.4-.8z"/><path d="M8 21h8"/></svg>Links</button>
     <button data-tab="creators" class="more-sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="m16 10 5-3v10l-5-3"/></svg>Creators</button>
+    <button data-tab="grow" class="more-sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></svg>Grow</button>
     <button data-tab="permissions" class="more">Image rights</button>
     <button data-tab="stats" class="more">Results</button>
     <button data-tab="guide" class="more">Guide</button>
@@ -208,6 +209,7 @@ dialog::backdrop{background:rgba(47,59,44,.4)}
   <section id="tab-affiliates" hidden></section>
   <section id="tab-links" hidden></section>
   <section id="tab-creators" hidden></section>
+  <section id="tab-grow" hidden></section>
   <section id="tab-permissions" hidden></section>
   <section id="tab-stats" hidden></section>
   <section id="tab-guide" class="guide" hidden></section>
@@ -288,7 +290,7 @@ const ASK_NAME = { images: 'Image permission', affiliate: 'Affiliate program', s
 const NETWORKS = { impact: 'Impact', awin: 'Awin / ShareASale', cj: 'CJ', avantlink: 'AvantLink', rakuten: 'Rakuten', partnerize: 'Partnerize', amazon: 'Amazon only', in_house: 'In-house', other: 'Other' };
 
 // ---------- tabs ----------
-const LOADERS = { today: loadToday, brands: loadBrands, drafts: loadDrafts, replies: loadReplies, affiliates: loadAffiliates, links: loadLinks, creators: loadCreators, permissions: loadPermissions, stats: loadStats, guide: loadGuide };
+const LOADERS = { today: loadToday, brands: loadBrands, drafts: loadDrafts, replies: loadReplies, affiliates: loadAffiliates, links: loadLinks, creators: loadCreators, grow: loadGrow, permissions: loadPermissions, stats: loadStats, guide: loadGuide };
 function showTab(name) {
   if (!LOADERS[name]) name = 'today';
   $$('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.tab === name));
@@ -298,7 +300,7 @@ function showTab(name) {
 }
 $('#tabs').addEventListener('click', (e) => { const b = e.target.closest('button[data-tab]'); if (b) showTab(b.dataset.tab); });
 function moreMenu() {
-  openDlg('More', [['creators', 'Creators'], ['affiliates', 'Affiliate programs'], ['permissions', 'Image rights'], ['stats', 'Results'], ['guide', 'Guide']]
+  openDlg('More', [['creators', 'Creators'], ['grow', 'Grow @thecribpicks'], ['affiliates', 'Affiliate programs'], ['permissions', 'Image rights'], ['stats', 'Results'], ['guide', 'Guide']]
     .map(([t, l]) => `<button class="btn ghost" style="width:100%;justify-content:center;margin-bottom:10px" onclick="dlg.close();showTab('${t}')">${l}</button>`).join(''));
 }
 
@@ -1345,6 +1347,178 @@ async function loadStats() {
       ${row('feed_status', ['none', 'asked', 'approved', 'declined'])}</div>
     <div class="card"><h3>First emails per week</h3><div class="small muted">Gray: sent (${s.sent} by Gmail, ${s.sentManual} by hand) · green: brands that replied</div>
       <div class="weeks">${s.byWeek.map((w) => `<div class="week"><div class="stack"><div class="s" style="height:${((w.sent - w.replied) / max) * 100}%"></div><div class="r" style="height:${(w.replied / max) * 100}%"></div></div>${esc((w.start || '').slice(5))}</div>`).join('') || '<div class="muted small">Nothing sent yet.</div>'}</div></div>`;
+}
+
+// ---------- GROW (@thecribpicks) ----------
+let GROW = null, growView = 'today', gf = { platform: '', category: '', status: '', q: '' };
+const growHandle = () => (S.settings?.social_handle || '@thecribpicks');
+async function loadGrow() {
+  const el = $('#tab-grow');
+  GROW = await api('/api/grow/summary');
+  const views = [['today', 'Today'], ['accounts', 'Accounts'], ['ideas', 'Post ideas'], ['playbook', 'Playbook']];
+  el.innerHTML = `<div class="row" style="margin-bottom:10px"><h2 style="flex:1">Grow ${esc(growHandle())}</h2>
+      ${S.claude.set ? `<button class="btn sm primary" onclick="findGrowDlg()">Find accounts</button>` : ''}<button class="btn sm ghost" onclick="addGrowDlg()">Add one</button></div>
+    <p class="small muted" style="margin-top:-4px">Who to follow and engage with, what to post, and how. Follows get you noticed; posts and comments are what make people follow back.</p>
+    <div class="sizechips">${views.map(([k, l]) => `<button class="sizechip ${growView === k ? 'on' : ''}" data-gv="${k}">${l}</button>`).join('')}</div>
+    <div id="growBody"></div>`;
+  el.querySelectorAll('[data-gv]').forEach((b) => (b.onclick = () => { growView = b.dataset.gv; loadGrow(); }));
+  await ({ today: growToday, accounts: growAccounts, ideas: growIdeas, playbook: growPlaybook }[growView])();
+}
+const growCat = (c) => ({ creator: 'Creator', brand: 'Brand', community: 'Parenting', expert: 'Expert', local: 'Local NY' }[c] || c);
+function growCard(t, mode) {
+  const plat = GROW.platforms[t.platform] || t.platform;
+  const btns = t.status === 'to_follow'
+    ? `<a class="btn sm primary" href="${esc(t.url || '#')}" target="_blank" rel="noopener" data-gopen="${t.id}">Open</a>
+       <button class="btn sm" data-gact="followed" data-id="${t.id}">Followed</button>
+       <button class="btn sm ghost" data-gact="skipped" data-id="${t.id}">Skip</button>`
+    : t.status === 'followed'
+      ? `<a class="btn sm" href="${esc(t.url || '#')}" target="_blank" rel="noopener">Open</a>
+         <button class="btn sm ${mode === 'engage' ? 'primary' : ''}" data-gact="engaged" data-id="${t.id}">Commented today</button>
+         <button class="btn sm ghost" data-gact="back" data-id="${t.id}" data-v="${t.follows_back ? 0 : 1}">${t.follows_back ? 'Follows you ✓' : 'Followed back?'}</button>`
+      : `<button class="btn sm ghost" data-gact="to_follow" data-id="${t.id}">Restore</button>`;
+  return `<div class="card" style="padding:12px 14px"><div class="row" style="align-items:flex-start;gap:10px">
+    <div style="flex:1;min-width:200px"><div><b>${esc(t.handle)}</b>${t.name && t.name !== t.handle ? ` <span class="muted">${esc(t.name)}</span>` : ''}</div>
+      <div class="small muted">${esc(plat)} · ${growCat(t.category)}${t.followers != null ? ' · <b>' + fmtNum(t.followers) + '</b> followers' : ''}${t.followed_on ? ' · followed ' + esc(t.followed_on) : ''}${t.engaged_on ? ' · last comment ' + esc(t.engaged_on) : ''}</div>
+      ${t.why ? `<div class="small" style="margin-top:3px">${esc(t.why)}</div>` : ''}</div>
+    <div class="row" style="gap:6px">${btns}</div></div></div>`;
+}
+function wireGrow(root, reload) {
+  root.querySelectorAll('[data-gact]').forEach((b) => (b.onclick = async () => {
+    const a = b.dataset.gact, id = b.dataset.id;
+    const body = a === 'engaged' ? { engaged: true } : a === 'back' ? { follows_back: b.dataset.v === '1' } : { status: a };
+    try { await post(`/api/grow/targets/${id}`, body); reload(); } catch (e) { toast(e.message); }
+  }));
+}
+async function growToday() {
+  const p = new URLSearchParams(); if (gf.platform) p.set('platform', gf.platform);
+  const t = await api('/api/grow/today?' + p);
+  const s = t.stats;
+  const body = $('#growBody');
+  const empty = !s.to_follow && !s.followed;
+  body.innerHTML = `<div class="kpis tight">${[[s.today, 'Followed today'], [s.this_week, 'This week'], [s.followed, 'Following'], [s.follow_backs, 'Followed back'], [s.to_follow, 'Waiting']]
+      .map(([v, l]) => `<div class="card kpi"><div class="v">${v}</div><div class="l">${l}</div></div>`).join('')}</div>
+    <div class="row" style="margin-bottom:10px"><select id="gtPlat"><option value="">All platforms</option>${Object.entries(GROW.platforms).map(([k, v]) => `<option value="${k}" ${gf.platform === k ? 'selected' : ''}>${v}</option>`).join('')}</select>
+      <span class="spacer"></span><button class="btn sm ghost" id="gSync" title="Adds brand Instagram accounts and creators from the Creators tab">Add brands + creators I already have</button></div>
+    ${empty ? `<div class="empty">Nothing here yet. Press <b>Add brands + creators I already have</b> to pull in accounts from this app, then <b>Find accounts</b> for parenting, expert and local accounts.</div>` : ''}
+    ${s.today >= 20 ? `<div class="banner warn"><span>${s.today} follows today. That's plenty for a new account: stop here and spend the time commenting instead.</span></div>` : ''}
+    ${t.follow.length ? `<div class="sec"><h3>Follow today</h3><span class="small muted">Open, follow, like or comment on one recent post, then press Followed. Creators you're pitching come first so your name looks familiar when the email lands.</span></div>${t.follow.map((x) => growCard(x, 'follow')).join('')}` : ''}
+    ${t.engage.length ? `<div class="sec"><h3>Comment on today</h3><span class="small muted">Accounts you follow and haven't commented on in a week. One real comment (a question, a specific detail, not "so cute!") on their newest post.</span></div>${t.engage.map((x) => growCard(x, 'engage')).join('')}` : ''}`;
+  $('#gtPlat').onchange = (e) => { gf.platform = e.target.value; growToday(); };
+  $('#gSync').onclick = async (e) => { e.target.disabled = true; try { const r = await post('/api/grow/sync'); toast(`Added ${r.added} account${r.added === 1 ? '' : 's'}`); loadGrow(); } catch (er) { toast(er.message); e.target.disabled = false; } };
+  wireGrow(body, growToday);
+}
+async function growAccounts() {
+  const opt = (v, txt, cur) => `<option value="${esc(v)}" ${v === cur ? 'selected' : ''}>${esc(txt)}</option>`;
+  $('#growBody').innerHTML = `<div class="filters">
+      <input type="search" placeholder="Search handles, names, notes" value="${esc(gf.q)}" id="gaQ">
+      <select data-gf="status">${opt('', 'All but skipped', gf.status)}${opt('to_follow', 'To follow', gf.status)}${opt('followed', 'Following', gf.status)}${opt('skipped', 'Skipped', gf.status)}</select>
+      <select data-gf="platform">${opt('', 'All platforms', gf.platform)}${Object.entries(GROW.platforms).map(([k, v]) => opt(k, v + (GROW.byPlatform[k] ? ` (${GROW.byPlatform[k]})` : ''), gf.platform)).join('')}</select>
+      <select data-gf="category">${opt('', 'All kinds', gf.category)}${Object.entries(GROW.categories).map(([k, v]) => opt(k, v + (GROW.byCategory[k] ? ` (${GROW.byCategory[k]})` : ''), gf.category)).join('')}</select>
+    </div><div id="gaList"></div>`;
+  $$('#growBody [data-gf]').forEach((s) => (s.onchange = () => { gf[s.dataset.gf] = s.value; growAccountList(); }));
+  let t; $('#gaQ').oninput = (e) => { gf.q = e.target.value; clearTimeout(t); t = setTimeout(growAccountList, 300); };
+  await growAccountList();
+}
+async function growAccountList() {
+  const list = await api('/api/grow/targets?' + new URLSearchParams(Object.entries(gf).filter(([, v]) => v)));
+  $('#gaList').innerHTML = `<div class="small muted" style="margin-bottom:8px">${list.length} account${list.length === 1 ? '' : 's'}</div>` +
+    (list.map((x) => growCard(x)).join('') || `<div class="empty">No accounts match.</div>`);
+  wireGrow($('#gaList'), growAccountList);
+}
+function findGrowDlg() {
+  openDlg('Find accounts to follow', `
+    <label>Platform<select id="fgPlat">${Object.entries(GROW.platforms).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select></label>
+    <label>Kind<select id="fgCat">${Object.entries(GROW.categories).filter(([k]) => k !== 'brand').map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}<option value="brand">${GROW.categories.brand}</option></select></label>
+    <label>Focus (optional)<input id="fgTopic" placeholder="e.g. strollers, twins, small-space nursery, registry"></label>
+    <p class="small muted">Claude searches the web for about 15 active accounts in that niche, leaning toward 1k to 100k followers: they notice new followers and their audience is your audience. Takes about a minute and roughly $0.30 to $0.60 of Claude usage (estimate). Duplicates are skipped.</p>
+    <div class="row"><button class="btn primary" id="fgGo">Find</button></div><div id="fgOut"></div>`);
+  $('#fgGo').onclick = async (e) => {
+    e.target.disabled = true; $('#fgOut').innerHTML = '<p class="small muted">Searching…</p>';
+    try {
+      const r = await post('/api/grow/find', { platform: $('#fgPlat').value, category: $('#fgCat').value, topic: $('#fgTopic').value });
+      $('#fgOut').innerHTML = `<p class="small">Added <b>${r.added}</b>${r.duplicates ? ` (${r.duplicates} already on the list)` : ''}.</p>`;
+      e.target.disabled = false; e.target.textContent = 'Find more';
+    } catch (er) { $('#fgOut').innerHTML = `<p class="small">${esc(er.message)}</p>`; e.target.disabled = false; }
+  };
+}
+function addGrowDlg() {
+  openDlg('Add an account', `
+    <label>Platform<select id="agPlat">${Object.entries(GROW.platforms).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select></label>
+    <label>Handle<input id="agHandle" placeholder="@handle or profile link"></label>
+    <label>Kind<select id="agCat">${Object.entries(GROW.categories).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select></label>
+    <label>Followers (optional)<input id="agFol" placeholder="12k"></label>
+    <label>Why (optional)<input id="agWhy"></label>
+    <div class="row"><button class="btn primary" id="agGo">Add</button></div>`);
+  $('#agGo').onclick = async () => {
+    const f = String($('#agFol').value).replace(/,/g, '').match(/(\d+(?:\.\d+)?)\s*([km])?/i);
+    try {
+      const r = await post('/api/grow/targets', { platform: $('#agPlat').value, handle: $('#agHandle').value, category: $('#agCat').value, why: $('#agWhy').value,
+        followers: f ? Math.round(f[1] * ({ k: 1e3, m: 1e6 }[(f[2] || '').toLowerCase()] || 1)) : null });
+      toast(r.duplicate ? 'Already on the list' : 'Added'); closeDlg();
+    } catch (e) { toast(e.message); }
+  };
+}
+async function growIdeas() {
+  const list = await api('/api/grow/ideas');
+  const body = $('#growBody');
+  body.innerHTML = `<div class="card" style="box-shadow:none"><div class="row" style="gap:8px">
+      <select id="giPlat">${Object.entries(GROW.platforms).filter(([k]) => k !== 'pinterest').map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select>
+      <input id="giFocus" placeholder="Focus (optional): strollers, car seats, a brand…" style="flex:1;min-width:180px">
+      ${S.claude.set ? `<button class="btn primary sm" id="giGo">Write 7 ideas</button>` : '<span class="small muted">Add a Claude key in Settings to generate ideas.</span>'}</div>
+      <p class="small muted" style="margin:8px 0 0">Built from your real product list. Claude never puts spec numbers or safety claims in the script: the video shows them on the Cribpicks page, so nothing can be wrong on camera. No face needed.</p></div>
+    <div class="small muted" style="margin:10px 0">${GROW.postedThisWeek} posted in the last 7 days · aim for 3 to 5 a week</div>
+    ${list.map((i) => {
+      const beats = parse(i.outline, []);
+      return `<div class="card" style="padding:14px"><div class="row"><b style="flex:1">${esc(i.title)}</b>${i.pillar ? tag('info', i.pillar) : ''}${tag(i.status === 'posted' ? 'replied' : i.status === 'planned' ? 'ready' : 'found', i.status)}</div>
+        ${i.hook ? `<div style="margin:6px 0"><span class="small muted">Hook:</span> <b>${esc(i.hook)}</b></div>` : ''}
+        ${beats.length ? `<ol class="small" style="margin:4px 0 6px;padding-left:20px">${beats.map((b) => `<li>${esc(b)}</li>`).join('')}</ol>` : ''}
+        ${i.caption ? `<div class="small"><span class="muted">Caption:</span> ${esc(i.caption)} <span class="muted">${esc(i.hashtags || '')}</span></div>` : ''}
+        ${i.link_url ? `<div class="small"><span class="muted">Show on screen / link in bio:</span> <a href="${esc(i.link_url)}" target="_blank" rel="noopener">${esc(i.link_url)}</a></div>` : ''}
+        <div class="row" style="gap:6px;margin-top:8px">
+          <button class="btn sm" data-icopy="${i.id}">Copy caption</button>
+          ${i.status !== 'planned' && i.status !== 'posted' ? `<input type="date" data-iplan="${i.id}" title="Plan for a day" style="max-width:160px">` : i.planned_on && i.status === 'planned' ? `<span class="small muted">Planned ${esc(i.planned_on)}</span>` : ''}
+          ${i.status !== 'posted' ? `<button class="btn sm primary" data-ist="posted" data-id="${i.id}">Posted</button><button class="btn sm ghost" data-ist="skipped" data-id="${i.id}">Skip</button>` : ''}
+        </div></div>`; }).join('') || `<div class="empty">No ideas yet. Press <b>Write 7 ideas</b>.</div>`}`;
+  $('#giGo')?.addEventListener('click', async (e) => {
+    e.target.disabled = true; e.target.textContent = 'Writing…';
+    try { const r = await post('/api/grow/ideas', { platform: $('#giPlat').value, focus: $('#giFocus').value, count: 7 }); toast(`${r.added} ideas added`); loadGrow(); }
+    catch (er) { toast(er.message); e.target.disabled = false; e.target.textContent = 'Write 7 ideas'; }
+  });
+  body.querySelectorAll('[data-icopy]').forEach((b) => (b.onclick = async () => {
+    const i = list.find((x) => x.id == b.dataset.icopy); await navigator.clipboard.writeText(`${i.caption || ''}\n\n${i.hashtags || ''}`.trim()); toast('Caption copied');
+  }));
+  body.querySelectorAll('[data-iplan]').forEach((d) => (d.onchange = async () => { await post(`/api/grow/ideas/${d.dataset.iplan}`, { status: 'planned', planned_on: d.value }); growIdeas(); }));
+  body.querySelectorAll('[data-ist]').forEach((b) => (b.onclick = async () => { await post(`/api/grow/ideas/${b.dataset.id}`, { status: b.dataset.ist }); GROW = await api('/api/grow/summary'); growIdeas(); }));
+}
+function growPlaybook() {
+  const sec = (h, items) => `<div class="card" style="padding:14px 16px"><h3 style="margin:0 0 6px">${h}</h3><ul style="margin:0;padding-left:20px">${items.map((x) => `<li style="margin-bottom:5px">${x}</li>`).join('')}</ul></div>`;
+  $('#growBody').innerHTML = `
+    <div class="banner"><span><b>The honest part:</b> following people brings a trickle of follow-backs. Almost all growth on TikTok and Reels comes from videos the algorithm shows to strangers. Spend about 20% of your time on follows and comments, 80% on posting.</span></div>
+    ${sec('Daily (15 to 20 minutes)', [
+      'Work the <b>Today</b> list: follow up to about 20 new accounts a day while the account is new, spread across the day. Neither app publishes limits, but new accounts that follow fast or follow-then-unfollow get restricted.',
+      'Leave 5 to 10 real comments on accounts you follow: a specific question or detail. Comments on mid-size creators\' new posts get seen by their audience, which is your audience.',
+      'Reply to every comment on your own posts within the first hour. Replies count as engagement and keep the video in circulation.',
+      'Never buy followers, use follow/unfollow apps or join engagement pods. Fake followers lower how often your posts get shown, and brands check.'])}
+    ${sec('Posting', [
+      'Post 3 to 5 times a week, same account voice every time. Consistency matters more than polish.',
+      'First 2 seconds decide everything: put the hook as on-screen text ("Stroller A or B for a third-floor walkup?").',
+      'Formats that fit Cribpicks: side-by-side comparisons, "one spec explained", registry must-have vs skip, myth vs fact, screen-recording the compare tool.',
+      'Show numbers from the Cribpicks page on screen instead of saying them. Never call a product "safest"; for car seats, point to the manual and a CPST.',
+      'Caption ends with a question. 4 to 6 hashtags: a couple broad (#babyregistry), the rest specific (#strollercomparison).',
+      'Link in bio goes to the page the video is about, not just the home page.',
+      'Repost the same video to Reels, Shorts and Pinterest (as video pins). Remove the TikTok watermark first: Instagram shows watermarked videos less.'])}
+    ${sec('Use what this app already has', [
+      '<b>Brands:</b> follow brands before you email them, and tag them when a video features their product. Brands reshare, and their reshare is worth more than any follow.',
+      '<b>Creators:</b> follow and comment on creators for a week before pitching them. Once one says yes, duet or stitch their video (with their OK) and tag them.',
+      '<b>Experts:</b> CPSTs, lactation consultants and sleep consultants answer questions parents trust. Stitching their safety advice (credited) adds weight your account doesn\'t have yet.',
+      '<b>Local:</b> Capital Region parent accounts are small and engaged. Local accounts follow back more often than national ones.'])}
+    ${sec('Disclosure (FTC)', [
+      'Any video about a product you got free or have an affiliate link for needs a clear "#ad" or "gifted" in the video and caption, plus the platform\'s paid-partnership label.',
+      'Affiliate links in bio: say so ("I may earn from links") in the bio or link page.'])}
+    ${sec('What to measure weekly', [
+      'Followers gained, average views per video, and which pillar got the most saves and shares (saves mean "useful": make more of those).',
+      'Follow-back rate on the Today tab. Under about 10% after two weeks: the profile isn\'t convincing yet. Pin your 3 best videos and make the bio say what parents get ("Baby gear specs side by side, no sponsored rankings").',
+      'Clicks from the bio link (use a link page with stats or a UTM on the cribpicks.com link).'])}`;
 }
 
 async function loadGuide() {

@@ -25,6 +25,7 @@ import { claudeKey, saveClaudeKey, researchBrand, draftEmail, rewriteMessage, dr
 import { handleEmail } from './inbound.js';
 import * as L from './links.js';
 import * as C from './creators.js';
+import * as G from './social.js';
 import { verifyEmail, verifyManual } from './verify.js';
 
 let schemaReady = false;
@@ -146,6 +147,20 @@ export default {
       if (path === '/api/check-replies' && method === 'POST') return json(await checkReplies(env));
       if (path === '/api/verify' && method === 'POST') return json(await recheckEmails(env, await body()));
       if (path === '/api/verify/status') return json(await verifyStatus(env));
+
+      // ---- grow (@thecribpicks) ----
+      if (path === '/api/grow/summary') return json(await G.socialSummary(env));
+      if (path === '/api/grow/today') return json(await G.today(env, url));
+      if (path === '/api/grow/targets' && method === 'GET') return json(await G.listTargets(env, url));
+      if (path === '/api/grow/targets' && method === 'POST') return json(await G.addTarget(env, await body()));
+      if (path === '/api/grow/sync' && method === 'POST') return json(await G.syncTargets(env));
+      if (path === '/api/grow/find' && method === 'POST') return json(await G.findTargets(env, await body()));
+      if (path === '/api/grow/ideas' && method === 'GET') return json(await G.listIdeas(env, url));
+      if (path === '/api/grow/ideas' && method === 'POST') return json(await G.generateIdeas(env, await body()));
+      {
+        const gm = path.match(/^\/api\/grow\/(targets|ideas)\/(\d+)$/);
+        if (gm && method === 'POST') return json(gm[1] === 'targets' ? await G.updateTarget(env, Number(gm[2]), await body()) : await G.updateIdea(env, Number(gm[2]), await body()));
+      }
 
       // ---- creators ----
       if (path === '/api/creators/summary') return json(await C.creatorSummary(env));

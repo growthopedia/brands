@@ -218,3 +218,44 @@ CREATE TABLE IF NOT EXISTS creator_features (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS creator_features_prospect ON creator_features(prospect_id);
+
+-- ---------- Grow (@thecribpicks social) ----------
+-- Accounts to follow and engage with. One row per platform + handle.
+CREATE TABLE IF NOT EXISTS social_targets (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  platform TEXT NOT NULL,                          -- tiktok | instagram | youtube | pinterest
+  handle TEXT NOT NULL,
+  name TEXT,
+  url TEXT,
+  followers INTEGER,
+  category TEXT NOT NULL DEFAULT 'community',      -- creator | brand | community | expert | local
+  why TEXT,
+  source TEXT,                                     -- claude | brands | creators | manual
+  ref_id INTEGER,                                  -- brand id or creator (link_prospects) id it came from
+  priority INTEGER NOT NULL DEFAULT 50,
+  status TEXT NOT NULL DEFAULT 'to_follow',        -- to_follow | followed | skipped
+  followed_on TEXT,
+  engaged_on TEXT,                                 -- last time you liked/commented
+  follows_back INTEGER NOT NULL DEFAULT 0,
+  notes TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (platform, handle)
+);
+CREATE INDEX IF NOT EXISTS social_targets_status ON social_targets(status, priority);
+
+-- Post ideas for @thecribpicks, written by Claude from the site's catalog.
+CREATE TABLE IF NOT EXISTS social_ideas (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  platform TEXT NOT NULL DEFAULT 'tiktok',
+  pillar TEXT,                                     -- compare | myth | registry | spec | behind | trend
+  title TEXT NOT NULL,
+  hook TEXT,
+  outline TEXT,                                    -- shot list / beats
+  caption TEXT,
+  hashtags TEXT,
+  link_url TEXT,                                   -- our page it points to
+  status TEXT NOT NULL DEFAULT 'idea',             -- idea | planned | posted | skipped
+  planned_on TEXT,
+  posted_url TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
