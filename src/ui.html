@@ -77,6 +77,7 @@ label.f+input,label.f+select,label.f+textarea{width:100%}
 .tag.info{background:var(--info-soft);border-color:transparent;color:var(--info)}
 .fol{font-size:14px}.fol b{font:600 17px/1 var(--head);color:var(--ink)}.fol.unknown{color:var(--soft);font-size:13px}
 .sizechips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
+.appr{width:100%;border-collapse:collapse;font-size:14px}.appr th{text-align:left;font-weight:600;padding:10px 12px;border-bottom:1px solid var(--line);white-space:nowrap}.appr td{padding:8px 12px;border-bottom:1px solid var(--line)}.appr select{padding:4px 6px;font-size:13px}.appr select.ask-yes{background:#e3ecd9;border-color:var(--rain)}.appr select.ask-no{background:#f6e3d8}
 .sizechip{border:1.5px solid var(--line);background:var(--cloud);border-radius:99px;padding:6px 12px;font:600 13px/1 var(--body);cursor:pointer;color:var(--ink)}
 .sizechip.on{border-color:var(--rain);background:var(--rain-soft)}
 .sizechip span{color:var(--soft);font-weight:500;margin-left:4px}
@@ -194,7 +195,8 @@ dialog::backdrop{background:rgba(47,59,44,.4)}
     <button data-tab="links"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2l2.4 4.9 5.4.8-3.9 3.8.9 5.4L12 14.4 7.2 17l.9-5.4L4.2 7.7l5.4-.8z"/><path d="M8 21h8"/></svg>Links</button>
     <button data-tab="creators" class="more-sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="m16 10 5-3v10l-5-3"/></svg>Creators</button>
     <button data-tab="grow" class="more-sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></svg>Grow</button>
-    <button data-tab="permissions" class="more">Image rights</button>
+    <button data-tab="permissions" class="more">Approvals</button>
+    <button data-tab="rereach" class="more">Re-reach</button>
     <button data-tab="stats" class="more">Results</button>
     <button data-tab="guide" class="more">Guide</button>
     <button class="more-btn" onclick="moreMenu()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg>More</button>
@@ -211,6 +213,7 @@ dialog::backdrop{background:rgba(47,59,44,.4)}
   <section id="tab-creators" hidden></section>
   <section id="tab-grow" hidden></section>
   <section id="tab-permissions" hidden></section>
+  <section id="tab-rereach" hidden></section>
   <section id="tab-stats" hidden></section>
   <section id="tab-guide" class="guide" hidden></section>
 </main>
@@ -290,7 +293,7 @@ const ASK_NAME = { images: 'Image permission', affiliate: 'Affiliate program', s
 const NETWORKS = { impact: 'Impact', awin: 'Awin / ShareASale', cj: 'CJ', avantlink: 'AvantLink', rakuten: 'Rakuten', partnerize: 'Partnerize', amazon: 'Amazon only', in_house: 'In-house', other: 'Other' };
 
 // ---------- tabs ----------
-const LOADERS = { today: loadToday, brands: loadBrands, drafts: loadDrafts, replies: loadReplies, affiliates: loadAffiliates, links: loadLinks, creators: loadCreators, grow: loadGrow, permissions: loadPermissions, stats: loadStats, guide: loadGuide };
+const LOADERS = { today: loadToday, brands: loadBrands, drafts: loadDrafts, replies: loadReplies, affiliates: loadAffiliates, links: loadLinks, creators: loadCreators, grow: loadGrow, permissions: loadPermissions, rereach: loadRereach, stats: loadStats, guide: loadGuide };
 function showTab(name) {
   if (!LOADERS[name]) name = 'today';
   $$('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.tab === name));
@@ -300,7 +303,7 @@ function showTab(name) {
 }
 $('#tabs').addEventListener('click', (e) => { const b = e.target.closest('button[data-tab]'); if (b) showTab(b.dataset.tab); });
 function moreMenu() {
-  openDlg('More', [['creators', 'Creators'], ['grow', 'Grow @thecribpicks'], ['affiliates', 'Affiliate programs'], ['permissions', 'Image rights'], ['stats', 'Results'], ['guide', 'Guide']]
+  openDlg('More', [['creators', 'Creators'], ['grow', 'Grow @thecribpicks'], ['affiliates', 'Affiliate programs'], ['permissions', 'Approvals'], ['rereach', 'Re-reach'], ['stats', 'Results'], ['guide', 'Guide']]
     .map(([t, l]) => `<button class="btn ghost" style="width:100%;justify-content:center;margin-bottom:10px" onclick="dlg.close();showTab('${t}')">${l}</button>`).join(''));
 }
 
@@ -697,7 +700,7 @@ async function openBrand(id, opts = {}) {
       await post(`/api/brands/${id}/permissions`, { granted_by: $('#pBy').value, granted_on: $('#pOn').value, scope: $('#pScope').value,
         uses: $$('input[name=puse]:checked', body).map((x) => x.value), credit_line: $('#pCredit').value, expires_on: $('#pExp').value,
         link_back: $('#pLink').checked, conditions: $('#pCond').value, evidence: $('#pEv').value });
-      toast('Permission saved. It\'s on the Image rights tab.'); openBrand(id);
+      toast('Permission saved. It\'s on the Approvals tab.'); openBrand(id);
     } catch (e) { $('#pMsg').innerHTML = `<b style="color:var(--fox)">Not saved: ${esc(e.message)}</b>`; toast('Not saved: ' + e.message); }
   };
   body.querySelectorAll('[data-revoke]').forEach((btn) => btn.onclick = async () => {
@@ -1337,16 +1340,74 @@ async function loadAffiliates() {
 }
 
 // ---------- PERMISSIONS ----------
+// ---------- APPROVALS (every ask) + image permission log ----------
+const ASK_OF = Object.fromEntries(Object.entries(ASK_KEY).map(([k, v]) => [v, k]));
+const ASK_YES = { image_status: ['approved'], affiliate_status: ['approved'], sample_status: ['approved', 'received'], collab_status: ['approved'], feed_status: ['approved'] };
 async function loadPermissions() {
-  const list = await api('/api/permissions');
-  $('#tab-permissions').innerHTML = `<div class="row" style="margin-bottom:10px"><h2 style="flex:1">Image permissions</h2><button class="btn sm primary" onclick="logPermissionDlg()">Log a permission</button><a class="btn sm ghost" href="/api/export/permissions.csv">Export (keep a copy)</a></div>
-    <p class="muted small">Your written record of who let you use their images, when, and on what terms. Only use a brand's images when it's listed here as active, and keep their original email.</p>
+  if (!FILTERS.asks.image_status) FILTERS = await api('/api/filters');
+  const [A, list] = await Promise.all([api('/api/approvals'), api('/api/permissions')]);
+  const withYes = A.list.filter((b) => b.got.length);
+  const cell = (b, k) => `<td><select data-ab="${b.id}" data-k="${k}" class="ask-${ASK_YES[k].includes(b[k]) ? 'yes' : b[k] === 'declined' ? 'no' : 'open'}">${FILTERS.asks[k].map((s) => `<option value="${s}" ${s === b[k] ? 'selected' : ''}>${label(s)}</option>`).join('')}</select></td>`;
+  $('#tab-permissions').innerHTML = `<div class="row" style="margin-bottom:10px"><h2 style="flex:1">Approvals</h2><button class="btn sm primary" onclick="logPermissionDlg()">Log an image permission</button><a class="btn sm ghost" href="/api/export/permissions.csv">Export image log</a></div>
+    <p class="muted small">Everything brands have said yes to. Change a status here when a brand approves something by email. Anything still open shows up on <a href="#" onclick="showTab('rereach');return false">Re-reach</a> so you can ask again once traffic grows.</p>
+    <div class="kpis tight">${Object.entries(ASK_LABEL).map(([k, l]) => `<div class="card kpi"><div class="v">${A.counts[k] || 0}</div><div class="l">${l}</div></div>`).join('')}</div>
+    ${withYes.length ? `<div class="card" style="padding:0;overflow-x:auto"><table class="appr"><thead><tr><th>Brand</th>${Object.values(ASK_LABEL).map((l) => `<th>${l}</th>`).join('')}</tr></thead>
+      <tbody>${withYes.map((b) => `<tr><td><b style="cursor:pointer;text-decoration:underline" data-brandlink="${b.id}">${esc(b.name)}</b>${b.image_status === 'approved' && !b.perms ? '<div class="small" style="color:var(--fox)">Image yes not logged below</div>' : ''}</td>${Object.keys(ASK_LABEL).map((k) => cell(b, k)).join('')}</tr>`).join('')}</tbody></table></div>`
+      : '<div class="empty">No approvals yet. When a brand says yes to anything, set it here or on the brand card.</div>'}
+    <div class="sec" style="margin-top:22px"><h3>Image permission log</h3><span class="small muted">Your written record for images: who said yes, when, and on what terms. Only use a brand's images while it's active here. Logging one marks Images approved.</span></div>
     ${list.map((p) => `<div class="card"><div class="row"><b style="flex:1;cursor:pointer" data-brandlink="${p.brand_id}">${esc(p.brand)}</b>
       ${p.revoked_on ? tag('declined', 'Revoked ' + p.revoked_on) : p.expires_on && p.expires_on < todayStr() ? tag('declined', 'Expired ' + p.expires_on) : tag('approved', p.expires_on ? 'Until ' + p.expires_on : 'Active')}</div>
       <div class="small muted">${esc(p.granted_by)} · ${esc(p.granted_on)}</div><div style="margin-top:6px;white-space:pre-wrap">"${esc(p.scope)}"</div>
       <div class="small muted" style="margin-top:4px">${[parse(p.uses, []).join(', '), p.credit_line && 'Credit: ' + p.credit_line, p.link_back && 'Link back required', p.conditions].filter(Boolean).map(esc).join(' · ')}</div></div>`).join('')
-      || '<div class="empty">None yet. When a brand says yes, press <b>Log a permission</b>.</div>'}`;
+      || '<div class="empty">None yet. When a brand says yes to images, press <b>Log an image permission</b>.</div>'}`;
+  $$('#tab-permissions [data-ab]').forEach((sel) => (sel.onchange = async () => {
+    try { await post(`/api/brands/${sel.dataset.ab}`, { [sel.dataset.k]: sel.value }); toast('Saved'); loadPermissions(); } catch (e) { toast(e.message); }
+  }));
 }
+
+// ---------- RE-REACH ----------
+let rrView = 'due';
+async function loadRereach() {
+  const A = await api('/api/approvals');
+  const list = A.list.filter((b) => b.open.length);
+  const due = list.filter((b) => b.due), later = list.filter((b) => !b.due);
+  const shown = rrView === 'due' ? due : later;
+  const addDays = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
+  $('#tab-rereach').innerHTML = `<div class="row" style="margin-bottom:10px"><h2 style="flex:1">Re-reach</h2></div>
+    <p class="muted small">Brands that already said yes to something (or replied) but haven't approved everything yet. Once traffic grows, go back and ask for the rest. They know you now, so these emails are short and start with a thank you.</p>
+    <div class="card" style="box-shadow:none;padding:12px 14px"><div class="row" style="gap:8px"><b>Your traffic</b>
+      <input id="rrTraffic" style="flex:1;min-width:220px" value="${esc(A.traffic)}" placeholder="e.g. 12,000 visitors in October (leave empty until you have real numbers)">
+      <button class="btn sm" id="rrSave">Save</button></div>
+      <div class="small muted" style="margin-top:6px">${A.traffic ? 'Re-reach emails will mention this, word for word.' : 'Empty: emails won\'t mention traffic. Real numbers are the strongest reason for a brand to say yes the second time, so add them when you have them.'}</div></div>
+    <div class="sizechips">${[['due', 'Ready to ask', due.length], ['later', 'Waiting for a date', later.length]].map(([k, l, n]) => `<button class="sizechip ${rrView === k ? 'on' : ''}" data-rr="${k}">${l}<span>${n}</span></button>`).join('')}</div>
+    ${shown.map((b) => `<div class="card" data-rrb="${b.id}" style="padding:14px"><div class="row"><b style="flex:1;cursor:pointer" data-brandlink="${b.id}">${esc(b.name)}</b>
+        ${b.rereach_on ? `<span class="small muted">Remind on ${esc(b.rereach_on)}</span>` : ''}</div>
+      <div class="small" style="margin:6px 0">${b.got.length ? `<span class="muted">Already yes:</span> ${b.got.map((k) => tag('approved', ASK_LABEL[k])).join('')}` : '<span class="muted">Replied, nothing approved yet</span>'}</div>
+      <div class="small muted" style="margin-bottom:4px">Ask again for:</div>
+      <div class="checks">${b.open.map((k) => `<label class="chk"><input type="checkbox" name="rra" value="${ASK_OF[k]}" ${b[k] === 'declined' ? '' : 'checked'}> ${ASK_LABEL[k]}${b[k] !== 'none' ? ` <span class="muted">(${label(b[k])})</span>` : ''}</label>`).join('')}</div>
+      <div class="row" style="gap:6px;margin-top:8px">
+        ${S.claude.set ? `<button class="btn sm primary" data-rrdraft="${b.id}">Draft re-reach email</button>` : ''}
+        <span class="small muted">Remind me:</span>
+        <button class="btn sm ghost" data-rrlater="${b.id}" data-d="${addDays(30)}">1 month</button>
+        <button class="btn sm ghost" data-rrlater="${b.id}" data-d="${addDays(91)}">3 months</button>
+        <input type="date" data-rrdate="${b.id}" value="${esc(b.rereach_on || '')}" style="max-width:160px">
+        ${b.rereach_on ? `<button class="btn sm ghost" data-rrlater="${b.id}" data-d="">Clear</button>` : ''}
+      </div></div>`).join('') || `<div class="empty">${rrView === 'due' ? 'Nothing ready. Brands land here once they reply or approve something but still have open asks.' : 'Nothing scheduled for later.'}</div>`}`;
+  const el = $('#tab-rereach');
+  el.querySelectorAll('[data-rr]').forEach((b) => (b.onclick = () => { rrView = b.dataset.rr; loadRereach(); }));
+  $('#rrSave').onclick = async () => { try { await post('/api/settings', { traffic: $('#rrTraffic').value }); await refreshSummary(); toast('Saved'); loadRereach(); } catch (e) { toast(e.message); } };
+  const setDate = async (id, d) => { try { await post(`/api/brands/${id}`, { rereach_on: d }); loadRereach(); } catch (e) { toast(e.message); } };
+  el.querySelectorAll('[data-rrlater]').forEach((b) => (b.onclick = () => setDate(b.dataset.rrlater, b.dataset.d)));
+  el.querySelectorAll('[data-rrdate]').forEach((i) => (i.onchange = () => setDate(i.dataset.rrdate, i.value)));
+  el.querySelectorAll('[data-rrdraft]').forEach((btn) => (btn.onclick = async () => {
+    const card = btn.closest('[data-rrb]'); const asks = $$('input[name=rra]:checked', card).map((x) => x.value);
+    if (!asks.length) return toast('Tick at least one thing to ask for');
+    btn.disabled = true; btn.textContent = 'Writing…';
+    try { await post(`/api/brands/${btn.dataset.rrdraft}/draft`, { asks, rereach: true }); await refreshSummary(); openBrand(Number(btn.dataset.rrdraft)); }
+    catch (e) { toast(e.message); btn.disabled = false; btn.textContent = 'Draft re-reach email'; }
+  }));
+}
+
 async function logPermissionDlg() {
   const brands = await api('/api/brands?sort=name');
   openDlg('Log a permission', `<label class="f">Which brand said yes?</label>
@@ -1573,6 +1634,7 @@ function openSettings() {
     <div class="grid2">${f('site_name', 'Site name', 'Cribpicks')}${f('site_url', 'Site address (goes in your signature)', 'https://cribpicks.com')}</div>
     <label class="f">About the site: the only facts Claude may use in emails. Keep it honest and update it at launch.</label>
     <textarea data-set="about" style="min-height:120px">${esc(s.about || '')}</textarea>
+    ${f('traffic', 'Your traffic, in your words (used only in re-reach emails; leave empty until you have real numbers)', '12,000 visitors in October')}
 
     <h3 style="margin-top:22px">Sending</h3>
     <div class="grid2">${f('sender_name', 'Your name', 'Jen Cannizzo')}${f('sender_email', 'Sending address (the new inbox)', 'hello@yourdomain.com', 'email')}</div>

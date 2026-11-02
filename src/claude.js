@@ -203,6 +203,10 @@ RULES
 - Banned words: leverage, synergy, solutions, elevate, boost, amazing opportunity, circle back, touch base, reach out.
 - No signature, sign-off name, address, or unsubscribe line. They are added automatically.
 - Apply notes_from_jen and jens_note if given.
+- If rereach is given, this brand already knows Jen. Skip the introduction: open by thanking them for what they already said yes to
+  (rereach.already_approved), share rereach.site_traffic only if it is given and word for word, then ask for the open items. If an item is in
+  rereach.said_no_before, acknowledge it lightly ("I know the timing wasn't right before"). 80 to 140 words. Subject mentions the brand and
+  ${s.site_name}, no "Re:".
 
 SUBJECT LINE: Title Case, 4 to 8 words, includes the brand name, plain and clear. Examples:
 "Using ${'<Brand>'} Images on ${s.site_name}", "${'<Brand>'} and ${s.site_name} Partnership Question", "Featuring ${'<Brand>'} on ${s.site_name}".
@@ -252,8 +256,16 @@ export async function draftEmail(env, id, body) {
   let out, model = 'template';
   if (await claudeKey(env)) {
     model = WRITE_MODEL(env);
+    const NAMES = { image_status: 'using their product images', affiliate_status: 'affiliate access', sample_status: 'product samples',
+      collab_status: 'social features', feed_status: 'spec sheets / data' };
+    const yes = { image_status: ['approved'], affiliate_status: ['approved'], sample_status: ['approved', 'received'], collab_status: ['approved'], feed_status: ['approved'] };
+    const rereach = body.rereach ? {
+      already_approved: Object.keys(yes).filter((c) => yes[c].includes(brand[c])).map((c) => NAMES[c]),
+      said_no_before: Object.keys(yes).filter((c) => brand[c] === 'declined').map((c) => NAMES[c]),
+      site_traffic: s.traffic || null,
+    } : null;
     const data = await call(env, { model, max_tokens: 1200, ...noThink(model), system: WRITE_SYSTEM(s),
-      messages: [{ role: 'user', content: JSON.stringify({ ...facts, asks: asks.map((a) => ASKS[a]), jens_note: String(body.note || '').slice(0, 500) || null }) }] });
+      messages: [{ role: 'user', content: JSON.stringify({ ...facts, asks: asks.map((a) => ASKS[a]), rereach, jens_note: String(body.note || '').slice(0, 500) || null }) }] });
     out = jsonOut(textOf(data));
     if (!out?.subject || !out?.body) throw fail('Claude returned something unexpected. Try again.', 502);
   } else {
@@ -261,6 +273,7 @@ export async function draftEmail(env, id, body) {
   }
   // One open draft per brand: replace the old draft instead of stacking them.
   await env.DB.prepare(`UPDATE messages SET status='skipped' WHERE brand_id=? AND status='draft' AND kind='initial'`).bind(id).run();
+  if (body.rereach) await env.DB.prepare(`UPDATE brands SET rereach_on=NULL WHERE id=?`).bind(id).run();
   const r = await env.DB.prepare(`INSERT INTO messages (brand_id, kind, asks, to_email, subject, body, model) VALUES (?, 'initial', ?, ?, ?, ?, ?)`)
     .bind(id, JSON.stringify(asks), brand.contact_email || null, titleCase(nodash(out.subject)).slice(0, 200), nodash(out.body).slice(0, 5000), model).run();
   return { ok: true, id: r.meta.last_row_id, model };

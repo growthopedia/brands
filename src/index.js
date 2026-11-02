@@ -40,6 +40,7 @@ async function ensureSchema(env) {
     await env.DB.prepare(`CREATE INDEX IF NOT EXISTS brands_odds ON brands(reply_odds)`).run();
     await refreshOdds(env);
   }
+  if (!cols.includes('rereach_on')) await env.DB.prepare(`ALTER TABLE brands ADD COLUMN rereach_on TEXT`).run();
   for (const t of ['brands', 'link_prospects']) {
     const c = (await all(env, `PRAGMA table_info(${t})`)).map((x) => x.name);
     if (!c.includes('email_check')) await env.DB.prepare(`ALTER TABLE ${t} ADD COLUMN email_check TEXT`).run();
@@ -143,6 +144,7 @@ export default {
       if (path === '/api/replies') return json(await listReplies(env, url));
       if (path === '/api/affiliates') return json(await affiliates(env));
       if (path === '/api/permissions') return json(await listPermissions(env));
+      if (path === '/api/approvals') return json(await approvals(env));
       if (path === '/api/permissions/extract' && method === 'POST') return json(await extractPermission(env, await body()));
       if (path === '/api/stats') return json(await stats(env));
       if (path === '/api/check-replies' && method === 'POST') return json(await checkReplies(env));
@@ -481,6 +483,11 @@ async function updateBrand(env, id, body) {
     sets.push(`${k}=?`); params.push(v);
     if (k === 'website') { sets.push('domain=?'); params.push(v ? domainOf(v) : null); }
   }
+  if (body.rereach_on !== undefined) {
+    const d = String(body.rereach_on || '');
+    if (d && !/^\d{4}-\d{2}-\d{2}$/.test(d)) throw fail('Bad date');
+    sets.push('rereach_on=?'); params.push(d || null);
+  }
   if (body.follow_up_on !== undefined) {
     const d = String(body.follow_up_on || '');
     if (d && !/^\d{4}-\d{2}-\d{2}$/.test(d)) throw fail('Bad date');
@@ -630,6 +637,26 @@ async function revokePermission(env, pid, body) {
   await logActivity(env, p.brand_id, 'permission', 'Image permission revoked. Take their images down.');
   return { ok: true };
 }
+// ---------- approvals + re-reach ----------
+// What counts as a yes for each ask. Anything else (except "no affiliate program") is still open and can be asked again later.
+const YES = { image_status: ['approved'], affiliate_status: ['approved'], sample_status: ['approved', 'received'], collab_status: ['approved'], feed_status: ['approved'] };
+const CLOSED = { affiliate_status: ['no_program'] };
+async function approvals(env) {
+  const cols = Object.keys(ASK_STATES);
+  const rows = await all(env, `SELECT id, name, domain, status, contact_name, contact_email, product_count, reply_odds, rereach_on, last_contacted_at,
+      ${cols.join(', ')}, (SELECT COUNT(*) FROM permissions p WHERE p.brand_id=b.id AND p.revoked_on IS NULL) perms
+    FROM brands b WHERE status != 'do_not_contact' AND (status IN ('replied','partner') OR ${cols.map((c) => `${c} IN (${YES[c].map((v) => `'${v}'`).join(',')})`).join(' OR ')})
+    ORDER BY name COLLATE NOCASE`);
+  const today = new Date().toISOString().slice(0, 10);
+  const list = rows.map((b) => {
+    const got = cols.filter((c) => YES[c].includes(b[c]));
+    const open = cols.filter((c) => !YES[c].includes(b[c]) && !(CLOSED[c] || []).includes(b[c]));
+    return { ...b, got, open, declined: open.filter((c) => b[c] === 'declined'), due: !b.rereach_on || b.rereach_on <= today };
+  });
+  const s = await cfg(env);
+  return { list, traffic: s.traffic || '', counts: Object.fromEntries(cols.map((c) => [c, list.filter((b) => b.got.includes(c)).length])) };
+}
+
 async function listPermissions(env) {
   return all(env, `SELECT p.*, b.name brand FROM permissions p JOIN brands b ON b.id=p.brand_id ORDER BY p.revoked_on IS NOT NULL, p.granted_on DESC`);
 }

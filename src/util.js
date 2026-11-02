@@ -27,6 +27,7 @@ export const SETTING_KEYS = {
   about: null, // what the site is and what Jen can honestly offer brands; Claude only uses facts from here
   own_emails: null, // other addresses of Jen's, so her own messages aren't logged as brand replies
   link_domains: null, // extra domains that count as links to us (e.g. the real domain before Site address switches to it)
+  traffic: null, // Jen's own words on site traffic, used in re-reach emails only when filled in (e.g. "12,000 visitors in October")
   forward_to: null, // where mail arriving through Cloudflare Email Routing is forwarded (must be verified there)
 };
 const DEFAULT_ABOUT = `Cribpicks is an independent baby gear comparison site, launching soon. It compares products side by side
