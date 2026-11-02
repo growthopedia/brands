@@ -328,3 +328,40 @@ export async function queueFollowups(env) {
   }
   return { queued: due.length };
 }
+
+// Reads a brand's email and fills in the permission form. The scope must be their exact words: anything Claude
+// can't quote straight from the email is dropped, and the person logging it checks every field before saving.
+export async function extractPermission(env, body) {
+  const text = String(body.text || '').trim().slice(0, 12000);
+  if (text.length < 20) throw fail('Paste their whole email, including the From line and date if you have them.');
+  const s = await cfg(env);
+  const model = WRITE_MODEL(env);
+  const data = await call(env, { model, max_tokens: 1500, ...noThink(model),
+    system: `You read an email a brand sent to ${s.sender_name} at ${s.site_name} and pull out what they agreed to about using their product images.
+Brand: ${String(body.brand || '').slice(0, 120)}. Today is ${new Date().toISOString().slice(0, 10)}.
+Rules: scope must be copied word for word from the email: the sentence(s) where they say yes and what to. Never paraphrase it.
+granted_by: the sender's name and email if shown (signature or From line), else what is shown. granted_on: the email's date as YYYY-MM-DD if shown, else null.
+uses: only places they allowed or clearly implied (website, social, app, email, ads, print). If they just say "yes you can use our images" for the site, use ["website"].
+credit_line, link_back, expires_on, conditions: only if they stated them. is_yes: true only if they clearly gave permission; false if they declined,
+asked questions, or said maybe. note: one short sentence on anything unclear or worth checking.
+Return ONLY JSON: {"is_yes": true, "granted_by": "", "granted_on": null, "scope": "", "uses": ["website"], "credit_line": null, "link_back": false, "expires_on": null, "conditions": null, "note": ""}`,
+    messages: [{ role: 'user', content: text }] });
+  const out = jsonOut(textOf(data));
+  if (!out) throw fail('Claude returned something unexpected. Try again or fill it in by hand.', 502);
+  const norm = (x) => String(x || '').replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/\s+/g, ' ').trim().toLowerCase();
+  const scopeOk = out.scope && norm(text).includes(norm(out.scope));
+  const date = (d) => (/^\d{4}-\d{2}-\d{2}$/.test(String(d || '')) ? d : null);
+  return {
+    is_yes: !!out.is_yes,
+    granted_by: String(out.granted_by || '').slice(0, 300),
+    granted_on: date(out.granted_on),
+    scope: scopeOk ? String(out.scope).trim() : '',
+    scope_missing: !scopeOk,
+    uses: (Array.isArray(out.uses) ? out.uses : []).filter((u) => ['website', 'social', 'app', 'ads', 'email', 'print'].includes(u)),
+    credit_line: out.credit_line ? String(out.credit_line).slice(0, 300) : '',
+    link_back: !!out.link_back,
+    expires_on: date(out.expires_on),
+    conditions: out.conditions ? String(out.conditions).slice(0, 2000) : '',
+    note: String(out.note || '').slice(0, 300),
+  };
+}

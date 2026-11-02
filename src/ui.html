@@ -512,7 +512,7 @@ function findLinks(b) {
   </div>`;
 }
 
-async function openBrand(id) {
+async function openBrand(id, opts = {}) {
   currentBrand = id;
   const { brand: b, products, contacts, messages, replies, permissions, activity } = await api(`/api/brands/${id}`).catch((e) => (toast(e.message), {}));
   if (!b) return;
@@ -596,7 +596,10 @@ async function openBrand(id) {
       <div class="t" style="white-space:pre-wrap;margin-top:4px">"${esc(p.scope)}"</div>
       <div class="small muted" style="margin-top:4px">${[parse(p.uses, []).join(', '), p.credit_line && 'Credit: ' + p.credit_line, p.link_back && 'Link back required', p.conditions, p.evidence && 'Proof: ' + p.evidence].filter(Boolean).map(esc).join(' · ')}</div>
       ${p.revoked_on ? '' : `<button class="btn sm danger" style="margin-top:6px" data-revoke="${p.id}">They took it back</button>`}</div>`).join('')}
-    <details ${b.image_status === 'replied' && !permissions.length ? 'open' : ''}><summary class="small">Log permission (do this the day they say yes)</summary>
+    <details id="permBox" ${(b.image_status === 'replied' || opts.logPermission) && !permissions.length ? 'open' : ''}><summary class="small">Log permission (do this the day they say yes)</summary>
+      ${S.claude.set ? `<label class="f">Their whole email (paste it, or it's filled with their last reply)</label>
+      <textarea id="pPaste" style="min-height:90px" placeholder="Paste their reply, including the From line, date and signature">${esc((replies.find((r) => r.kind === 'reply') || {}).body || '')}</textarea>
+      <div class="row" style="margin:6px 0 10px"><button class="btn sm" id="pFill">Fill in from their email</button><span class="small muted" id="pFillNote">Claude fills the fields below. Check each one before you save.</span></div>` : ''}
       <div class="grid2">
         <div><label class="f">Who said yes (name + email)</label><input id="pBy"></div>
         <div><label class="f">Date of their email</label><input type="date" id="pOn" value="${todayStr()}"></div>
@@ -669,6 +672,25 @@ async function openBrand(id) {
     try { await post(`/api/brands/${id}/reply`, { from_email: $('#lrFrom').value, kind: $('#lrKind').value, text: $('#lrText').value }); toast('Reply saved'); await refreshSummary(); openBrand(id); }
     catch (e) { toast(e.message); }
   };
+  $('#pFill')?.addEventListener('click', async (e) => {
+    const btn = e.target; btn.disabled = true; btn.textContent = 'Reading…';
+    try {
+      const r = await post('/api/permissions/extract', { text: $('#pPaste').value, brand: b.name });
+      if (r.granted_by) $('#pBy').value = r.granted_by;
+      if (r.granted_on) $('#pOn').value = r.granted_on;
+      $('#pScope').value = r.scope || '';
+      $$('input[name=puse]', body).forEach((x) => (x.checked = (r.uses.length ? r.uses : ['website']).includes(x.value)));
+      if (r.credit_line) $('#pCredit').value = r.credit_line;
+      if (r.expires_on) $('#pExp').value = r.expires_on;
+      $('#pLink').checked = r.link_back;
+      if (r.conditions) $('#pCond').value = r.conditions;
+      const warn = [!r.is_yes && 'This doesn\'t read as a clear yes. Don\'t save it unless they actually gave permission.',
+        r.scope_missing && 'Paste the sentence where they say yes into "What they allowed" yourself.', !r.granted_on && 'Add the date of their email.', r.note].filter(Boolean);
+      $('#pFillNote').innerHTML = warn.length ? `<b>${warn.map(esc).join(' ')}</b>` : 'Filled. Check each field, add proof, then save.';
+    } catch (er) { toast(er.message); }
+    btn.disabled = false; btn.textContent = 'Fill in from their email';
+  });
+  if (opts.logPermission) setTimeout(() => $('#permBox')?.scrollIntoView({ block: 'start' }), 50);
   $('#pGo').onclick = async () => {
     try {
       await post(`/api/brands/${id}/permissions`, { granted_by: $('#pBy').value, granted_on: $('#pOn').value, scope: $('#pScope').value,
@@ -1316,13 +1338,29 @@ async function loadAffiliates() {
 // ---------- PERMISSIONS ----------
 async function loadPermissions() {
   const list = await api('/api/permissions');
-  $('#tab-permissions').innerHTML = `<div class="row" style="margin-bottom:10px"><h2 style="flex:1">Image permissions</h2><a class="btn sm ghost" href="/api/export/permissions.csv">Export (keep a copy)</a></div>
+  $('#tab-permissions').innerHTML = `<div class="row" style="margin-bottom:10px"><h2 style="flex:1">Image permissions</h2><button class="btn sm primary" onclick="logPermissionDlg()">Log a permission</button><a class="btn sm ghost" href="/api/export/permissions.csv">Export (keep a copy)</a></div>
     <p class="muted small">Your written record of who let you use their images, when, and on what terms. Only use a brand's images when it's listed here as active, and keep their original email.</p>
     ${list.map((p) => `<div class="card"><div class="row"><b style="flex:1;cursor:pointer" data-brandlink="${p.brand_id}">${esc(p.brand)}</b>
       ${p.revoked_on ? tag('declined', 'Revoked ' + p.revoked_on) : p.expires_on && p.expires_on < todayStr() ? tag('declined', 'Expired ' + p.expires_on) : tag('approved', p.expires_on ? 'Until ' + p.expires_on : 'Active')}</div>
       <div class="small muted">${esc(p.granted_by)} · ${esc(p.granted_on)}</div><div style="margin-top:6px;white-space:pre-wrap">"${esc(p.scope)}"</div>
       <div class="small muted" style="margin-top:4px">${[parse(p.uses, []).join(', '), p.credit_line && 'Credit: ' + p.credit_line, p.link_back && 'Link back required', p.conditions].filter(Boolean).map(esc).join(' · ')}</div></div>`).join('')
-      || '<div class="empty">None yet. When a brand says yes, open it and press Log permission.</div>'}`;
+      || '<div class="empty">None yet. When a brand says yes, press <b>Log a permission</b>.</div>'}`;
+}
+async function logPermissionDlg() {
+  const brands = await api('/api/brands?sort=name');
+  openDlg('Log a permission', `<label class="f">Which brand said yes?</label>
+    <input id="lpB" list="lpList" placeholder="Start typing a brand" style="width:100%" autocomplete="off">
+    <datalist id="lpList">${brands.map((b) => `<option value="${esc(b.name)}">`).join('')}</datalist>
+    <p class="small muted">Next you'll paste their email and Claude fills in the record. You check it and save.</p>
+    <button class="btn primary" id="lpGo">Next</button>`);
+  const go = () => {
+    const v = $('#lpB').value.trim().toLowerCase();
+    const b = brands.find((x) => x.name.toLowerCase() === v) || brands.filter((x) => x.name.toLowerCase().includes(v)).sort((a, c) => a.name.length - c.name.length)[0];
+    if (!v || !b) return toast('Pick a brand from the list');
+    openBrand(b.id, { logPermission: true });
+  };
+  $('#lpGo').onclick = go;
+  $('#lpB').onkeydown = (e) => { if (e.key === 'Enter') go(); };
 }
 
 // ---------- RESULTS ----------

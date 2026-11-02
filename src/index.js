@@ -21,7 +21,7 @@ import { refreshOdds } from './util.js';
 import { fail, all, first, json, csvResponse, cfg, saveSettings, setMeta, getMeta, parseJ, domainOf, EMAIL_RE, sentToday, logActivity } from './util.js';
 import { sendMessage, checkReplies, gmailCreds, saveGmailClient, disconnectGmail, oauthStart, oauthCallback, sendBlocker,
   markAsked, recordReply, applyReplyEffects, classify, signature } from './gmail.js';
-import { claudeKey, saveClaudeKey, researchBrand, draftEmail, rewriteMessage, draftAnswer, queueFollowups, ASKS } from './claude.js';
+import { claudeKey, saveClaudeKey, researchBrand, draftEmail, rewriteMessage, draftAnswer, queueFollowups, ASKS, extractPermission } from './claude.js';
 import { handleEmail } from './inbound.js';
 import * as L from './links.js';
 import * as C from './creators.js';
@@ -143,6 +143,7 @@ export default {
       if (path === '/api/replies') return json(await listReplies(env, url));
       if (path === '/api/affiliates') return json(await affiliates(env));
       if (path === '/api/permissions') return json(await listPermissions(env));
+      if (path === '/api/permissions/extract' && method === 'POST') return json(await extractPermission(env, await body()));
       if (path === '/api/stats') return json(await stats(env));
       if (path === '/api/check-replies' && method === 'POST') return json(await checkReplies(env));
       if (path === '/api/verify' && method === 'POST') return json(await recheckEmails(env, await body()));
