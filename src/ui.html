@@ -614,7 +614,7 @@ async function openBrand(id, opts = {}) {
       </div>
       <label class="f">Other conditions</label><input id="pCond" style="width:100%">
       <label class="f">Proof (Gmail link, or where the email is saved)</label><input id="pEv" style="width:100%">
-      <button class="btn primary" style="margin-top:10px" id="pGo">Save permission</button></details>
+      <div class="row" style="margin-top:10px;gap:10px"><button class="btn primary" id="pGo">Save permission</button><span class="small" id="pMsg"></span></div></details>
 
     <div class="sec"><h3>Affiliate program</h3></div>
     <div class="grid3">
@@ -678,14 +678,15 @@ async function openBrand(id, opts = {}) {
       const r = await post('/api/permissions/extract', { text: $('#pPaste').value, brand: b.name });
       if (r.granted_by) $('#pBy').value = r.granted_by;
       if (r.granted_on) $('#pOn').value = r.granted_on;
-      $('#pScope').value = r.scope || '';
+      // If Claude couldn't quote the exact sentence, keep their whole email: it's still their words, and you can trim it.
+      $('#pScope').value = r.scope || $('#pPaste').value.trim();
       $$('input[name=puse]', body).forEach((x) => (x.checked = (r.uses.length ? r.uses : ['website']).includes(x.value)));
       if (r.credit_line) $('#pCredit').value = r.credit_line;
       if (r.expires_on) $('#pExp').value = r.expires_on;
       $('#pLink').checked = r.link_back;
       if (r.conditions) $('#pCond').value = r.conditions;
       const warn = [!r.is_yes && 'This doesn\'t read as a clear yes. Don\'t save it unless they actually gave permission.',
-        r.scope_missing && 'Paste the sentence where they say yes into "What they allowed" yourself.', !r.granted_on && 'Add the date of their email.', r.note].filter(Boolean);
+        r.scope_missing && 'Their whole email went into "What they allowed". Trim it to the part where they say yes, or leave it.', !r.granted_on && 'Add the date of their email.', r.note].filter(Boolean);
       $('#pFillNote').innerHTML = warn.length ? `<b>${warn.map(esc).join(' ')}</b>` : 'Filled. Check each field, add proof, then save.';
     } catch (er) { toast(er.message); }
     btn.disabled = false; btn.textContent = 'Fill in from their email';
@@ -696,8 +697,8 @@ async function openBrand(id, opts = {}) {
       await post(`/api/brands/${id}/permissions`, { granted_by: $('#pBy').value, granted_on: $('#pOn').value, scope: $('#pScope').value,
         uses: $$('input[name=puse]:checked', body).map((x) => x.value), credit_line: $('#pCredit').value, expires_on: $('#pExp').value,
         link_back: $('#pLink').checked, conditions: $('#pCond').value, evidence: $('#pEv').value });
-      toast('Permission saved'); openBrand(id);
-    } catch (e) { toast(e.message); }
+      toast('Permission saved. It\'s on the Image rights tab.'); openBrand(id);
+    } catch (e) { $('#pMsg').innerHTML = `<b style="color:var(--fox)">Not saved: ${esc(e.message)}</b>`; toast('Not saved: ' + e.message); }
   };
   body.querySelectorAll('[data-revoke]').forEach((btn) => btn.onclick = async () => {
     const note = prompt('What did they say? Their images need to come down.', ''); if (note === null) return;

@@ -348,7 +348,8 @@ Return ONLY JSON: {"is_yes": true, "granted_by": "", "granted_on": null, "scope"
     messages: [{ role: 'user', content: text }] });
   const out = jsonOut(textOf(data));
   if (!out) throw fail('Claude returned something unexpected. Try again or fill it in by hand.', 502);
-  const norm = (x) => String(x || '').replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/\s+/g, ' ').trim().toLowerCase();
+  // Compare loosely: Gmail pastes add "> " quote marks, line breaks and curly quotes.
+  const norm = (x) => String(x || '').replace(/^\s*>+\s?/gm, '').replace(/[^a-z0-9]+/gi, ' ').trim().toLowerCase();
   const scopeOk = out.scope && norm(text).includes(norm(out.scope));
   const date = (d) => (/^\d{4}-\d{2}-\d{2}$/.test(String(d || '')) ? d : null);
   return {
