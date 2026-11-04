@@ -60,10 +60,12 @@ async function brandPage(env, brandId) {
   return null;
 }
 
-async function brandFacts(env, brand) {
+// link: include the brand's page URL. First emails skip it while the domain is new (Settings → Link in first emails);
+// replies and follow-ups always include it.
+async function brandFacts(env, brand, { link = false } = {}) {
   const products = await all(env, `SELECT name, type, section, price FROM products WHERE brand_id=? ORDER BY price IS NULL, price DESC LIMIT 10`, brand.id);
   return {
-    their_page_on_our_site: await brandPage(env, brand.id),
+    their_page_on_our_site: link ? await brandPage(env, brand.id) : null,
     brand: brand.name,
     website: brand.domain || null,
     is_store_brand: brand.kind === 'store_brand',
@@ -210,7 +212,7 @@ HOW THE EMAIL IS BUILT
 RULES
 - 110 to 180 words. 3 to 5 short paragraphs. Plain text, no bullet points, no emojis.
 - The site is live. If their_page_on_our_site is given, include that one link in step 3 so they can see their product ("You can see it here: <url>").
-  No other links. Never invent traffic, followers, audience size, or partners; the about text says what's true.
+  If it is null, include no links at all: say where their product is in words ("already in our Cribs section"). No other links. Never invent traffic, followers, audience size, or partners; the about text says what's true.
 - Never offer better placement, scores or rankings in exchange for anything. Comparisons stay independent. Do not promise coverage.
 - If is_store_brand is true, the brand belongs to a retailer: write to the retailer's partnerships or affiliate team.
 - Never mention recalls.
@@ -268,7 +270,7 @@ export async function draftEmail(env, id, body) {
   const asks = (Array.isArray(body.asks) ? body.asks : ['images', 'affiliate']).filter((a) => ASKS[a]);
   if (!asks.length) throw fail('Pick at least one thing to ask for.');
   const s = await cfg(env);
-  const facts = await brandFacts(env, brand);
+  const facts = await brandFacts(env, brand, { link: s.link_first === '1' || !!body.rereach });
   let out, model = 'template';
   if (await claudeKey(env)) {
     model = WRITE_MODEL(env);
@@ -305,7 +307,7 @@ export async function rewriteMessage(env, id, body) {
   const model = WRITE_MODEL(env);
   const data = await call(env, { model, max_tokens: 1200, ...noThink(model),
     system: WRITE_SYSTEM(s) + `\n\nYOU ARE NOW EDITING an existing draft. Apply Jen's feedback exactly and keep the rules above. Return the same JSON shape.`,
-    messages: [{ role: 'user', content: JSON.stringify({ ...(await brandFacts(env, brand)), asks: parseJ(msg.asks, []).map((a) => ASKS[a]).filter(Boolean),
+    messages: [{ role: 'user', content: JSON.stringify({ ...(await brandFacts(env, brand, { link: msg.kind !== 'initial' || s.link_first === '1' })), asks: parseJ(msg.asks, []).map((a) => ASKS[a]).filter(Boolean),
       current_subject: body.subject ?? msg.subject, current_body: body.body ?? msg.body, jens_feedback: feedback }) }] });
   const out = jsonOut(textOf(data));
   if (!out?.subject || !out?.body) throw fail('Claude returned something unexpected. Try again.', 502);
@@ -325,12 +327,13 @@ export async function draftAnswer(env, replyId, body) {
   const data = await call(env, { model, max_tokens: 1200, ...noThink(model),
     system: `You write Jen Cannizzo's answer to a brand that replied to her ${s.site_name} partnership email. Write AS Jen, in first person ("I"), never about her in third person. Voice: warm, brief, plain, no em or en dashes,
 no signature. ABOUT THE SITE (only facts you may use): ${s.about}
-Answer exactly what they asked. If they granted image permission, thank them and confirm the terms back in one sentence so there's a clear
+Answer exactly what they asked. If their_page_on_our_site is given, include that link once (e.g. "Here's the page so you can see it: <url>"),
+since this is a reply and links are welcome now. No other links. If they granted image permission, thank them and confirm the terms back in one sentence so there's a clear
 written record (what images, where, credit line). If they asked for traffic numbers, say honestly the site just launched and offer to
 send numbers once there's a month or two of data. Don't re-introduce the site; they already know it. Never invent facts or promise placement. 30 to 110 words.
 No sign-off, no "Thanks, Jen", no name at the end: the signature is added automatically.
 Return ONLY JSON: {"subject": "Re: ...", "body": "..."}`,
-    messages: [{ role: 'user', content: JSON.stringify({ brand: brand.name, jens_last_email: lastSent ? `${lastSent.subject}\n\n${lastSent.body}` : null,
+    messages: [{ role: 'user', content: JSON.stringify({ brand: brand.name, their_page_on_our_site: await brandPage(env, brand.id), jens_last_email: lastSent ? `${lastSent.subject}\n\n${lastSent.body}` : null,
       their_reply: rep.body || rep.snippet, their_email: rep.from_email, jens_note: String(body.note || '').slice(0, 500) || null }) }] });
   const out = jsonOut(textOf(data));
   if (!out?.body) throw fail('Claude returned something unexpected. Try again.', 502);
@@ -351,7 +354,8 @@ export async function queueFollowups(env) {
      LIMIT 20`);
   for (const b of due) {
     const hi = b.contact_name ? `Hi ${b.contact_name.split(' ')[0]},` : 'Hi there,';
-    const text = `${hi}\n\nJust floating this back to the top of your inbox in case it got buried. Happy to work with whoever handles partnerships or PR, if that's someone else.\n\nThank you!`;
+    const page = await brandPage(env, b.id);
+    const text = `${hi}\n\nJust floating this back to the top of your inbox in case it got buried.${page ? ` Here's the page on our site so you can see how it looks: ${page}` : ''}\n\nHappy to work with whoever handles partnerships or PR, if that's someone else.\n\nThank you!`;
     await env.DB.prepare(`INSERT INTO messages (brand_id, kind, asks, to_email, subject, body, model) VALUES (?, 'followup', ?, ?, ?, ?, 'template')`)
       .bind(b.id, b.asks || '[]', b.to_email || b.contact_email, /^re:/i.test(b.subject) ? b.subject : `Re: ${b.subject}`, text).run();
   }

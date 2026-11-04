@@ -1664,6 +1664,8 @@ function openSettings() {
     <div class="grid2">${f('site_name', 'Site name', 'Cribpicks')}${f('site_url', 'Site address (goes in your signature)', 'https://cribpicks.com')}</div>
     <label class="f">About the site: the only facts Claude may use in emails. Keep it honest and update it at launch.</label>
     <textarea data-set="about" style="min-height:120px">${esc(s.about || '')}</textarea>
+    <label class="f">Link to the brand's page in first emails</label>
+    <select data-set="link_first"><option value="" ${s.link_first === '1' ? '' : 'selected'}>Off: mention the page in words, link it in replies and follow-ups (best while the domain is new)</option><option value="1" ${s.link_first === '1' ? 'selected' : ''}>On: link it in first emails too</option></select>
     ${f('traffic', 'Your traffic, in your words (used only in re-reach emails; leave empty until you have real numbers)', '12,000 visitors in October')}
 
     <h3 style="margin-top:22px">Sending</h3>
