@@ -267,7 +267,7 @@ export async function draftEmail(env, id, body) {
   const brand = await first(env, `SELECT * FROM brands WHERE id=?`, id);
   if (!brand) throw fail('Brand not found', 404);
   if (brand.status === 'do_not_contact') throw fail('This brand is marked do not contact.');
-  const asks = (Array.isArray(body.asks) ? body.asks : ['images', 'affiliate']).filter((a) => ASKS[a]);
+  const asks = (Array.isArray(body.asks) ? body.asks : ['images', 'products']).filter((a) => ASKS[a]);
   if (!asks.length) throw fail('Pick at least one thing to ask for.');
   const s = await cfg(env);
   const facts = await brandFacts(env, brand, { link: s.link_first === '1' || !!body.rereach });

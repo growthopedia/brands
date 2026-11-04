@@ -604,7 +604,7 @@ async function openBrand(id, opts = {}) {
     <div class="sec"><h3 style="flex:1">Email</h3></div>
     ${draft ? `<div id="brandDraft"></div>` : `<div class="card" style="box-shadow:none">
       <div class="small muted" style="margin-bottom:8px">Pick what to ask for. Two asks max is usually best for a first email.</div>
-      <div class="checks">${Object.entries(ASK_NAME).map(([k, l]) => `<label class="chk"><input type="checkbox" name="ask" value="${k}" ${['images', 'affiliate'].includes(k) && b[ASK_KEY[k]] === 'none' ? 'checked' : ''}> ${l}</label>`).join('')}</div>
+      <div class="checks">${Object.entries(ASK_NAME).map(([k, l]) => `<label class="chk"><input type="checkbox" name="ask" value="${k}" ${(k === 'images' && b.image_status === 'none') || k === 'products' ? 'checked' : ''}> ${l}${k === 'affiliate' && !S.settings.traffic ? ' <span class="muted">(wait for traffic)</span>' : ''}</label>`).join('')}</div>
       <input id="draftNote" style="width:100%;margin-top:10px" placeholder="Anything to mention? (optional) e.g. we already link to their Vista page">
       <div class="row" style="margin-top:10px"><button class="btn primary" id="draftBtn">${S.claude.set ? 'Write email with Claude' : 'Write email from template'}</button></div></div>`}
 
@@ -1414,7 +1414,7 @@ async function loadRereach() {
         ${b.rereach_on ? `<span class="small muted">Remind on ${esc(b.rereach_on)}</span>` : ''}</div>
       <div class="small" style="margin:6px 0">${b.got.length ? `<span class="muted">Already yes:</span> ${b.got.map((k) => tag('approved', ASK_LABEL[k])).join('')}` : '<span class="muted">Replied, nothing approved yet</span>'}</div>
       <div class="small muted" style="margin-bottom:4px">Ask again for:</div>
-      <div class="checks">${b.open.map((k) => `<label class="chk"><input type="checkbox" name="rra" value="${ASK_OF[k]}" ${b[k] === 'declined' ? '' : 'checked'}> ${ASK_LABEL[k]}${b[k] !== 'none' ? ` <span class="muted">(${label(b[k])})</span>` : ''}</label>`).join('')}</div>
+      <div class="checks">${b.open.map((k) => `<label class="chk"><input type="checkbox" name="rra" value="${ASK_OF[k]}" ${b[k] === 'declined' || (k === 'affiliate_status' && !A.traffic) ? '' : 'checked'}> ${ASK_LABEL[k]}${b[k] !== 'none' ? ` <span class="muted">(${label(b[k])})</span>` : ''}</label>`).join('')}</div>
       <div class="row" style="gap:6px;margin-top:8px">
         ${S.claude.set ? `<button class="btn sm primary" data-rrdraft="${b.id}">Draft re-reach email</button>` : ''}
         <span class="small muted">Remind me:</span>
