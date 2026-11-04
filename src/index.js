@@ -434,16 +434,22 @@ async function filters(env) {
 
 async function listBrands(env, url) {
   const p = url.searchParams, where = [], params = [];
-  if (p.get('status')) { where.push('status=?'); params.push(p.get('status')); }
+  // Every filter takes one value or a comma-separated list (checkbox filters); values in one filter are OR'd.
+  const many = (k) => (p.get(k) || '').split(',').map((x) => x.trim()).filter(Boolean);
+  const anyOf = (parts) => { if (parts.length) where.push(parts.length === 1 ? parts[0] : `(${parts.join(' OR ')})`); };
+  const inList = (col, vals) => { if (vals.length) { where.push(`${col} IN (${vals.map(() => '?').join(',')})`); params.push(...vals); } };
+  const status = many('status').filter((v) => BRAND_STATUSES.includes(v));
+  if (status.length) inList('status', status);
   else if (p.get('hide_done') === '1') where.push(`status NOT IN ('do_not_contact','skipped','declined')`);
-  if (p.get('section')) { where.push(`EXISTS (SELECT 1 FROM products x WHERE x.brand_id=b.id AND x.section=?)`); params.push(p.get('section')); }
-  if (p.get('kind')) { where.push('kind=?'); params.push(p.get('kind')); }
-  if (p.get('contact') === 'email') where.push(`contact_email IS NOT NULL AND contact_email!=''`);
-  if (p.get('contact') === 'any') where.push(`(COALESCE(contact_email,'')!='' OR COALESCE(contact_url,'')!='')`);
-  if (p.get('contact') === 'none') where.push(`COALESCE(contact_email,'')='' AND COALESCE(contact_url,'')=''`);
-  if (p.get('researched') === '0') where.push('researched_at IS NULL');
-  if (p.get('researched') === '1') where.push('researched_at IS NOT NULL');
-  for (const col of Object.keys(ASK_STATES)) if (p.get(col)) { where.push(`${col}=?`); params.push(p.get(col)); }
+  const secs = many('section');
+  if (secs.length) { where.push(`EXISTS (SELECT 1 FROM products x WHERE x.brand_id=b.id AND x.section IN (${secs.map(() => '?').join(',')}))`); params.push(...secs); }
+  inList('kind', many('kind').filter((v) => ['brand', 'store_brand'].includes(v)));
+  anyOf(many('contact').map((v) => ({ email: `COALESCE(contact_email,'')!=''`, form: `COALESCE(contact_email,'')='' AND COALESCE(contact_url,'')!=''`,
+    none: `COALESCE(contact_email,'')='' AND COALESCE(contact_url,'')=''`, any: `(COALESCE(contact_email,'')!='' OR COALESCE(contact_url,'')!='')` }[v])).filter(Boolean));
+  anyOf(many('researched').map((v) => ({ 0: 'researched_at IS NULL', 1: 'researched_at IS NOT NULL' }[v])).filter(Boolean));
+  // Reply chance buckets match the labels on the cards: likely 65%+, might 45 to 64%, long shot under 45%, done = replied or closed.
+  anyOf(many('odds').map((v) => ({ likely: 'reply_odds >= 65', might: 'reply_odds >= 45 AND reply_odds < 65', long: 'reply_odds < 45', done: 'reply_odds IS NULL' }[v])).filter(Boolean));
+  for (const [col, states] of Object.entries(ASK_STATES)) inList(col, many(col).filter((v) => states.includes(v)));
   if (p.get('q')) {
     const q = `%${p.get('q')}%`;
     where.push(`(name LIKE ? OR domain LIKE ? OR contact_email LIKE ? OR notes LIKE ? OR EXISTS (SELECT 1 FROM products x WHERE x.brand_id=b.id AND x.name LIKE ?))`);

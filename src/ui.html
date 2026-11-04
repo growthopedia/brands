@@ -86,6 +86,11 @@ label.f+input,label.f+select,label.f+textarea{width:100%}
 .score.good{background:var(--rain-soft);color:var(--rain-dark)}.score.info{background:var(--info-soft);color:var(--info)}.score.warn{background:var(--sun-soft);color:var(--sun-ink)}
 .filters{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px;margin-bottom:12px}
 .filters input[type=search]{grid-column:span 2}
+.fdrop{position:relative}.fdrop>summary{list-style:none;cursor:pointer;border:1.5px solid var(--line);background:var(--cloud);border-radius:12px;padding:9px 12px;font-size:14px;display:flex;align-items:center;gap:6px;white-space:nowrap;overflow:hidden}
+.fdrop>summary::-webkit-details-marker{display:none}.fdrop>summary::after{content:'▾';margin-left:auto;color:var(--soft)}.fdrop[open]>summary{border-color:var(--rain)}
+.fcount{background:var(--rain);color:#fff;border-radius:99px;font-size:11px;padding:1px 7px;font-weight:600}
+.fmenu{position:absolute;z-index:20;top:calc(100% + 4px);left:0;min-width:230px;max-height:320px;overflow:auto;background:var(--cloud);border:1.5px solid var(--line);border-radius:12px;padding:8px;box-shadow:0 8px 24px rgba(47,59,44,.14);display:flex;flex-direction:column;gap:2px}
+.fmenu .chk{border:0;padding:6px 8px;border-radius:8px;width:100%;justify-content:flex-start}.fmenu .chk:hover{background:var(--mist)}
 .filters>*{min-width:0;width:100%}
 .brand{display:flex;gap:12px;align-items:flex-start;cursor:pointer}
 .brand:hover{border-color:var(--sky-deep)}
@@ -228,7 +233,7 @@ const q = encodeURIComponent;
 const dlg = $('#dlg');
 let S = {}; // summary
 let FILTERS = { sections: [], statuses: [], asks: {} };
-const bf = { q: '', status: '', section: '', contact: '', image_status: '', affiliate_status: '', kind: '', researched: '', sort: 'odds', hide_done: '1' };
+const bf = { q: '', status: [], section: [], contact: [], odds: [], image_status: [], affiliate_status: [], kind: [], researched: [], sort: 'odds', hide_done: '1' };
 let replyState = 'open', currentBrand = null, currentProspect = null;
 let TACTIC_INFO = {}, LINKS = { pages: [], hosts: [] }, CREATORS = null;
 const cf = { q: '', status: '', platform: '', size: '', contact: '', sort: 'odds' };
@@ -453,18 +458,28 @@ async function loadBrands() {
         <a class="btn sm ghost" href="/api/export/brands.csv">Export</a></div>
       <div class="filters" id="bFilters"></div><div id="bCount" class="small muted" style="margin-bottom:8px"></div><div id="bList"></div>`;
   }
+  // Checkbox filters: tick any number in a group; brands matching any ticked box in that group show.
+  const group = (k, title, items) => {
+    const on = bf[k];
+    return `<details class="fdrop" data-fd="${k}" ${openDrop === k ? 'open' : ''}><summary>${esc(title)}${on.length ? ` <span class="fcount">${on.length}</span>` : ''}</summary><div class="fmenu">
+      ${items.map(([v, l]) => `<label class="chk"><input type="checkbox" data-fv="${k}" value="${esc(v)}" ${on.includes(String(v)) ? 'checked' : ''}> ${esc(l)}</label>`).join('')}
+      ${on.length ? `<button class="btn sm ghost" data-fclear="${k}">Clear</button>` : ''}</div></details>`;
+  };
+  const active = ['status', 'section', 'contact', 'odds', 'image_status', 'affiliate_status', 'kind', 'researched'].some((k) => bf[k].length);
   $('#bFilters').innerHTML = `
     <input type="search" placeholder="Search brands, products, emails" value="${esc(bf.q)}" data-f="q">
-    <select data-f="status">${opt('', 'Any status', bf.status)}${FILTERS.statuses.map((s) => opt(s, label(s), bf.status)).join('')}</select>
-    <select data-f="section">${opt('', 'All categories', bf.section)}${FILTERS.sections.map((s) => opt(s.v, `${s.v} (${s.n})`, bf.section)).join('')}</select>
-    <select data-f="contact">${opt('', 'Any contact', bf.contact)}${opt('email', 'Has email', bf.contact)}${opt('any', 'Email or form', bf.contact)}${opt('none', 'No contact yet', bf.contact)}</select>
-    <select data-f="researched">${opt('', 'Researched or not', bf.researched)}${opt('0', 'Not researched', bf.researched)}${opt('1', 'Researched', bf.researched)}</select>
-    <select data-f="image_status">${opt('', 'Images: any', bf.image_status)}${FILTERS.asks.image_status.map((s) => opt(s, 'Images: ' + label(s), bf.image_status)).join('')}</select>
-    <select data-f="affiliate_status">${opt('', 'Affiliate: any', bf.affiliate_status)}${FILTERS.asks.affiliate_status.map((s) => opt(s, 'Affiliate: ' + label(s), bf.affiliate_status)).join('')}</select>
-    <select data-f="kind">${opt('', 'Brands + store brands', bf.kind)}${opt('brand', 'Brands only', bf.kind)}${opt('store_brand', 'Store brands only', bf.kind)}</select>
+    ${group('odds', 'Reply chance', [['likely', 'Likely to reply (65%+)'], ['might', 'Might reply (45 to 64%)'], ['long', 'Long shot (under 45%)'], ['done', 'Already replied or closed']])}
+    ${group('status', 'Status', FILTERS.statuses.map((x) => [x, label(x)]))}
+    ${group('section', 'Category', FILTERS.sections.map((x) => [x.v, `${x.v} (${x.n})`]))}
+    ${group('contact', 'Contact', [['email', 'Has email'], ['form', 'Contact form only'], ['none', 'No contact yet']])}
+    ${group('image_status', 'Images', FILTERS.asks.image_status.map((x) => [x, label(x)]))}
+    ${group('affiliate_status', 'Affiliate', FILTERS.asks.affiliate_status.map((x) => [x, label(x)]))}
+    ${group('researched', 'Researched', [['1', 'Researched'], ['0', 'Not researched']])}
+    ${group('kind', 'Brand type', [['brand', 'Brands'], ['store_brand', 'Store brands']])}
     <select data-f="sort">${opt('odds', 'Sort: most likely to reply', bf.sort)}${opt('score', 'Sort: most valuable', bf.sort)}${opt('products', 'Sort: most products', bf.sort)}${opt('price', 'Sort: priciest', bf.sort)}${opt('name', 'Sort: A to Z', bf.sort)}${opt('updated', 'Sort: recently changed', bf.sort)}${opt('follow_up', 'Sort: follow-up date', bf.sort)}</select>
-    <label class="chk"><input type="checkbox" data-f="hide_done" ${bf.hide_done === '1' ? 'checked' : ''}> Hide skipped & declined</label>`;
-  const p = new URLSearchParams(Object.entries(bf).filter(([, v]) => v));
+    <label class="chk"><input type="checkbox" data-f="hide_done" ${bf.hide_done === '1' ? 'checked' : ''}> Hide skipped & declined</label>
+    ${active ? `<button class="btn sm ghost" data-fclear="all">Clear filters</button>` : ''}`;
+  const p = new URLSearchParams(Object.entries(bf).map(([k, v]) => [k, Array.isArray(v) ? v.join(',') : v]).filter(([, v]) => v));
   const list = await api('/api/brands?' + p);
   $('#bCount').textContent = `${list.length} brand${list.length === 1 ? '' : 's'}`;
   $('#bList').innerHTML = list.map(brandCard).join('') || '<div class="empty">No brands match.</div>';
@@ -474,7 +489,22 @@ document.addEventListener('input', (e) => {
   const f = e.target.dataset?.f; if (!f || !e.target.closest('#bFilters')) return;
   if (f === 'q') { bf.q = e.target.value; clearTimeout(searchT); searchT = setTimeout(loadBrands, 300); }
 });
+let openDrop = null;
+document.addEventListener('toggle', (e) => { const d = e.target; if (d.matches?.('#bFilters .fdrop')) {
+  if (d.open) { openDrop = d.dataset.fd; $$('#bFilters .fdrop').forEach((x) => { if (x !== d) x.open = false; }); } else if (openDrop === d.dataset.fd) openDrop = null; } }, true);
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('#bFilters .fdrop')) { $$('#bFilters .fdrop[open]').forEach((x) => (x.open = false)); }
+  const c = e.target.closest('#bFilters [data-fclear]'); if (!c) return;
+  e.preventDefault();
+  if (c.dataset.fclear === 'all') ['status', 'section', 'contact', 'odds', 'image_status', 'affiliate_status', 'kind', 'researched'].forEach((k) => (bf[k] = []));
+  else bf[c.dataset.fclear] = [];
+  loadBrands();
+});
 document.addEventListener('change', (e) => {
+  const fv = e.target.dataset?.fv;
+  if (fv && e.target.closest('#bFilters')) {
+    const v = e.target.value; bf[fv] = e.target.checked ? [...new Set([...bf[fv], v])] : bf[fv].filter((x) => x !== v); loadBrands(); return;
+  }
   const f = e.target.dataset?.f; if (!f || !e.target.closest('#bFilters')) return;
   bf[f] = e.target.type === 'checkbox' ? (e.target.checked ? '1' : '') : e.target.value; loadBrands();
 });
