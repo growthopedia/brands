@@ -71,6 +71,18 @@ async function ensureSchema(env) {
       env.DB.prepare(`INSERT OR REPLACE INTO meta (key, value) VALUES ('renamed_cribpicks', datetime('now'))`),
     ]);
   }
+  // Site launched (Nov 2026): update saved About text, and point product links at cribpicks.com.
+  if (!(await first(env, `SELECT 1 FROM meta WHERE key='launched'`))) {
+    await env.DB.batch([
+      env.DB.prepare(`UPDATE meta SET value=replace(replace(replace(replace(value,
+        'baby gear comparison site, launching soon.', 'baby gear comparison site, live at cribpicks.com since November 2026.'),
+        'It is not live to the public yet, so there are no traffic numbers to share.', 'It just launched, so there are no traffic numbers to share yet.'),
+        'Plans: honest comparisons, a registry builder,', 'Plans: a registry builder,'),
+        'run by Jen Cannizzo,', 'run by Jen,') WHERE key='cfg_about'`),
+      env.DB.prepare(`UPDATE products SET site_url=replace(site_url, 'https://strollers.engagements-c1b.workers.dev', 'https://cribpicks.com') WHERE site_url LIKE 'https://strollers.engagements-c1b.workers.dev%'`),
+      env.DB.prepare(`INSERT OR REPLACE INTO meta (key, value) VALUES ('launched', datetime('now'))`),
+    ]);
+  }
   // Name is Cribpicks with a lowercase p: fix anything saved as "CribPicks".
   if (!(await first(env, `SELECT 1 FROM meta WHERE key='renamed_cribpicks_lower'`))) {
     await env.DB.batch([

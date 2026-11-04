@@ -30,11 +30,10 @@ export const SETTING_KEYS = {
   traffic: null, // Jen's own words on site traffic, used in re-reach emails only when filled in (e.g. "12,000 visitors in October")
   forward_to: null, // where mail arriving through Cloudflare Email Routing is forwarded (must be verified there)
 };
-const DEFAULT_ABOUT = `Cribpicks is an independent baby gear comparison site, launching soon. It compares products side by side
-across every baby gear category (strollers, car seats, cribs, feeding, nursery and more) using the manufacturers' own spec sheets,
-with every spec sourced. It is run by Jen Cannizzo, a parent and digital marketer in New York. It is not live to the public yet,
-so there are no traffic numbers to share. Plans: honest comparisons, a registry builder, and short TikTok videos showing the
-products and the comparison tools.`;
+const DEFAULT_ABOUT = `Cribpicks is an independent baby gear comparison site, live at cribpicks.com since November 2026. It compares
+products side by side across every baby gear category (strollers, car seats, cribs, feeding, nursery and more) using the manufacturers'
+own spec sheets, with every spec sourced. It is run by Jen, a parent and digital marketer in New York. It just launched, so there are
+no traffic numbers to share yet. Plans: a registry builder, and short TikTok videos showing the products and the comparison tools.`;
 
 let cfgCache = null;
 export async function cfg(env, fresh = false) {

@@ -245,10 +245,11 @@ HOW IT IS BUILT
 5. A no-pressure close.
 
 RULES
+- When Jen introduces herself, it is just "Jen", never her last name.
 - ${channel === 'dm' ? '35 to 70 words, 2 or 3 very short paragraphs' : '70 to 140 words, 3 or 4 short paragraphs'}. Plain text, no emojis, no hashtags, no bullet points.
 - Never offer money, free products, or affiliate commission unless jens_note says to. Never imply they already endorse the site.
 - Never ask them to change what they said about a product or to say anything specific. Their opinion is theirs.
-- Never mention SEO, backlinks, or followers counts. Be honest that the site is launching soon if the about text says so.
+- Never mention SEO, backlinks, or followers counts. The site is live; only use the about text for facts about it.
 - Never use em dashes or en dashes.
 - No signature, sign-off or name at the end. ${channel === 'dm' ? 'This is a DM, so there is no signature at all.' : 'The signature is added automatically.'}
 SUBJECT (email only): Title Case, 3 to 8 words, about their video (e.g. "Loved Your Registry Video"). For a DM, subject is "DM".

@@ -393,10 +393,11 @@ HOW IT IS BUILT
 4. A no-pressure close, e.g. "No worries if it's not a fit."
 
 RULES
+- When Jen introduces herself, it is just "Jen", never her last name.
 - 70 to 150 words. 3 or 4 short paragraphs. Plain text, no bullet points, no emojis. The only link is target_url.
 - Never offer money, gifts, free products, or a link back in exchange for a link. Never mention SEO, backlinks, dofollow, rankings,
   domain authority, or "link juice". Never criticize other sites.
-- Be honest that the site is launching soon if the about text says so. Never invent traffic, readers, or credentials.
+- The site is live; only use the about text for facts about it. Never invent traffic, readers, or credentials.
 - Never use em dashes or en dashes. Use commas or periods.
 - No signature, sign-off, name, address, or unsubscribe line. They are added automatically.
 - Apply jens_note if given.

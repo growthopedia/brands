@@ -48,9 +48,22 @@ export function jsonOut(text) {
 }
 
 // ---------- facts about a brand that Claude may use ----------
+// The brand's page on the live site: the first of their product pages that actually loads (some categories were cut at launch).
+async function brandPage(env, brandId) {
+  const s = await cfg(env);
+  let origin; try { origin = new URL(s.site_url).origin; } catch { return null; }
+  const rows = await all(env, `SELECT site_url FROM products WHERE brand_id=? AND site_url IS NOT NULL ORDER BY price IS NULL, price DESC LIMIT 4`, brandId);
+  for (const r of rows) {
+    let url; try { const u = new URL(r.site_url); url = origin + u.pathname; } catch { continue; }
+    try { const res = await fetch(url, { method: 'HEAD', redirect: 'follow' }); if (res.ok) return url; } catch {}
+  }
+  return null;
+}
+
 async function brandFacts(env, brand) {
   const products = await all(env, `SELECT name, type, section, price FROM products WHERE brand_id=? ORDER BY price IS NULL, price DESC LIMIT 10`, brand.id);
   return {
+    their_page_on_our_site: await brandPage(env, brand.id),
     brand: brand.name,
     website: brand.domain || null,
     is_store_brand: brand.kind === 'store_brand',
@@ -176,6 +189,7 @@ export const ASKS = {
   samples: 'Whether they would send a sample for hands-on testing and a short video. The review stays independent.',
   collab: 'Interest in being featured in short TikTok and social videos showing their products and our comparison tools.',
   feed: 'Spec sheets or a product data feed so our specs stay accurate, and an invite for their team to flag anything we got wrong.',
+  products: 'Which of their other products they would like added to the site, so their full line is covered (we can add new and upcoming products too).',
 };
 
 const WRITE_SYSTEM = (s) => `You write short partnership emails for Jen Cannizzo, who runs ${s.site_name}, an independent baby gear comparison site.
@@ -186,7 +200,7 @@ ABOUT THE SITE (the ONLY facts you may use about it): ${s.about}
 
 HOW THE EMAIL IS BUILT
 1. "Hi <first name>," if contact_first_name is given, otherwise "Hi there,".
-2. One line on who Jen is and what the site is.
+2. One line on who Jen is and what the site is. Introduce her as just "Jen" ("I'm Jen, a parent and..."), never her last name.
 3. One specific line about this brand using the facts given: how many of their products the site already covers and one or two by
    name, or the categories they're in. Never invent facts.
 4. The asks, in the order given, in plain words. One ask gets a short paragraph. Several asks get one sentence each, written as
@@ -194,8 +208,9 @@ HOW THE EMAIL IS BUILT
 5. An easy close that offers a choice: "Is this something you handle, or is there someone better to ask?"
 
 RULES
-- 110 to 180 words. 3 to 5 short paragraphs. Plain text, no bullet points, no links, no emojis.
-- Be honest that the site is launching soon if the about text says so. Never invent traffic, followers, audience size, or partners.
+- 110 to 180 words. 3 to 5 short paragraphs. Plain text, no bullet points, no emojis.
+- The site is live. If their_page_on_our_site is given, include that one link in step 3 so they can see their product ("You can see it here: <url>").
+  No other links. Never invent traffic, followers, audience size, or partners; the about text says what's true.
 - Never offer better placement, scores or rankings in exchange for anything. Comparisons stay independent. Do not promise coverage.
 - If is_store_brand is true, the brand belongs to a retailer: write to the retailer's partnerships or affiliate team.
 - Never mention recalls.
@@ -229,16 +244,17 @@ export function templateEmail(s, brand, facts, asks) {
   const hi = facts.contact_first_name ? `Hi ${facts.contact_first_name},` : 'Hi there,';
   const ex = facts.example_products.slice(0, 2).join(' and ');
   const lines = {
-    images: `Could we use your official product images on those pages? We'd credit ${brand.name} and link back to your site. If you have a media kit or image library, that would be perfect.`,
+    images: `Could we use your official product images on our comparison pages? We'd credit ${brand.name} and link back to your site. If you have a media kit or image library, that would be perfect.`,
     affiliate: `I'd also love to know if you run an affiliate program, and the best way to join.`,
     samples: `If you're open to it, I'd love a sample to test hands-on for a short video. The comparison itself stays independent.`,
     collab: `We're also making short TikTok videos showing products side by side, and I'd love to feature yours.`,
     feed: `If you have spec sheets or a product feed, I'd use them to keep every number accurate, and your team is welcome to flag anything we got wrong.`,
+    products: `Are there other ${brand.name} products you'd like added? I'm happy to cover your full line, including anything new or coming soon.`,
   };
   const body = [
     hi, '',
-    `I'm Jen, and I'm building ${s.site_name}, an independent baby gear comparison site that lines products up side by side using the makers' own spec sheets. We're launching soon.`, '',
-    `We already cover ${facts.products_on_our_site} ${brand.name} product${facts.products_on_our_site === 1 ? '' : 's'}${ex ? `, including the ${ex}` : ''}.`, '',
+    `I'm Jen, and I run ${s.site_name}, an independent baby gear comparison site that lines products up side by side using the makers' own spec sheets.`, '',
+    `We already cover ${facts.products_on_our_site} ${brand.name} product${facts.products_on_our_site === 1 ? '' : 's'}${ex ? `, including the ${ex}` : ''}.${facts.their_page_on_our_site ? ` You can see it here: ${facts.their_page_on_our_site}` : ''}`, '',
     asks.map((a) => lines[a]).filter(Boolean).join(' '), '',
     `Is this something you handle, or is there someone better to ask?`,
   ].join('\n');
@@ -310,8 +326,8 @@ export async function draftAnswer(env, replyId, body) {
     system: `You write Jen Cannizzo's answer to a brand that replied to her ${s.site_name} partnership email. Write AS Jen, in first person ("I"), never about her in third person. Voice: warm, brief, plain, no em or en dashes,
 no signature. ABOUT THE SITE (only facts you may use): ${s.about}
 Answer exactly what they asked. If they granted image permission, thank them and confirm the terms back in one sentence so there's a clear
-written record (what images, where, credit line). If they asked for traffic numbers, say honestly the site is launching soon and offer to
-send numbers after launch. Don't re-introduce the site; they already know it. Never invent facts or promise placement. 30 to 110 words.
+written record (what images, where, credit line). If they asked for traffic numbers, say honestly the site just launched and offer to
+send numbers once there's a month or two of data. Don't re-introduce the site; they already know it. Never invent facts or promise placement. 30 to 110 words.
 No sign-off, no "Thanks, Jen", no name at the end: the signature is added automatically.
 Return ONLY JSON: {"subject": "Re: ...", "body": "..."}`,
     messages: [{ role: 'user', content: JSON.stringify({ brand: brand.name, jens_last_email: lastSent ? `${lastSent.subject}\n\n${lastSent.body}` : null,
