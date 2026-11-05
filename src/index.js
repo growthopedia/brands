@@ -83,6 +83,17 @@ async function ensureSchema(env) {
       env.DB.prepare(`INSERT OR REPLACE INTO meta (key, value) VALUES ('launched', datetime('now'))`),
     ]);
   }
+  // The launch update moved product links to cribpicks.com but not the matching key (ukey), so re-loading the list would duplicate
+  // every product. Move the keys too, and remove any duplicates already made (keep the oldest row, which has the history).
+  if (!(await first(env, `SELECT 1 FROM meta WHERE key='launched_ukey'`))) {
+    const OLD = 'https://strollers.engagements-c1b.workers.dev', NEW = 'https://cribpicks.com';
+    await env.DB.batch([
+      env.DB.prepare(`DELETE FROM products WHERE ukey LIKE ? AND EXISTS (SELECT 1 FROM products o WHERE o.ukey = replace(products.ukey, ?, ?) AND o.id < products.id)`).bind(NEW + '%', NEW, OLD),
+      env.DB.prepare(`UPDATE OR IGNORE products SET ukey=replace(ukey, ?, ?) WHERE ukey LIKE ?`).bind(OLD, NEW, OLD + '%'),
+      env.DB.prepare(`DELETE FROM products WHERE ukey LIKE ?`).bind(OLD + '%'),
+      env.DB.prepare(`INSERT OR REPLACE INTO meta (key, value) VALUES ('launched_ukey', datetime('now'))`),
+    ]);
+  }
   // Name is Cribpicks with a lowercase p: fix anything saved as "CribPicks".
   if (!(await first(env, `SELECT 1 FROM meta WHERE key='renamed_cribpicks_lower'`))) {
     await env.DB.batch([
@@ -305,6 +316,7 @@ async function summary(env) {
     gmail: { connected: Boolean(g.refresh), clientSaved: Boolean(g.id && g.secret), fromEnv: Boolean(env.GMAIL_CLIENT_ID), account: g.account },
     claude: { set: Boolean(key), fromEnv: Boolean(env.ANTHROPIC_API_KEY), hint: key ? key.slice(0, 10) + '…' + key.slice(-4) : null },
     asks: ASKS, lastReplyCheck: m.last_reply_check || null, lastImport: m.last_import || null, seedCount: SEED.rows.length,
+    seedNew: brands.n ? await seedNew(env) : 0,
   };
 }
 
@@ -337,7 +349,19 @@ const RETAILER_HOSTS = ['walmart.com', 'target.com', 'ikea.com', 'crateandbarrel
   'westelm.com', 'costco.com', 'samsclub.com', 'kohls.com', 'wayfair.com', 'babylist.com', 'buybuybaby.com', 'rh.com', 'macys.com', 'nordstrom.com'];
 const MARKETPLACE = /(^|\.)(amazon|walmart|target|ebay|etsy|wayfair|kohls|macys|nordstrom|costco|samsclub|babylist|buybuybaby|bestbuy)\./;
 
+// How many built-in products (new pages on the site) aren't in the app yet.
+let seedNewCache = null;
+async function seedNew(env) {
+  if (seedNewCache && Date.now() - seedNewCache.at < 60_000) return seedNewCache.n;
+  const i = SEED.columns.indexOf('Site page');
+  const have = new Set((await all(env, `SELECT site_url FROM products WHERE site_url IS NOT NULL`)).map((r) => r.site_url));
+  const n = SEED.rows.filter((r) => r[i] && !have.has(r[i])).length;
+  seedNewCache = { at: Date.now(), n };
+  return n;
+}
+
 async function importRows(env, body) {
+  seedNewCache = null;
   const cols = Array.isArray(body.columns) ? body.columns : [];
   const rows = Array.isArray(body.rows) ? body.rows.slice(0, 600) : [];
   const idx = {};

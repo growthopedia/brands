@@ -392,7 +392,7 @@ async function loadSeed(btn) {
   try {
     const seed = await api('/seed.json');
     const r = await importRows(seed.columns, seed.rows, (p) => (bar.firstElementChild.style.width = Math.round(p * 100) + '%'));
-    toast(`Loaded ${r.products.toLocaleString()} products from ${r.brands} brands`);
+    toast(r.newBrands ? `Done: ${r.newBrands} new brand${r.newBrands === 1 ? '' : 's'} added (${r.products.toLocaleString()} products, ${r.brands} brands in all)` : `Loaded ${r.products.toLocaleString()} products from ${r.brands} brands`);
     await refreshSummary(); loadToday();
   } catch (e) { toast(e.message); btn.disabled = false; }
 }
@@ -433,6 +433,9 @@ async function loadToday() {
     return;
   }
   const t = await api('/api/today');
+  const seedBanner = S.seedNew ? `<div class="card"><div class="row"><div style="flex:1"><b>${S.seedNew.toLocaleString()} new products from the site aren't in the app yet</b>
+      <div class="small muted">Adds new products and brands. Your notes, contacts, emails and statuses stay as they are.</div></div>
+      <button class="btn primary sm" onclick="loadSeed(this)">Add them</button></div><div class="progress" id="seedBar" hidden><i style="width:0"></i></div></div>` : '';
   const setup = [
     [S.brands > 0, `Product list loaded (${S.brands} brands, ${S.products.toLocaleString()} products)`],
     [S.claude.set, 'Claude key added (research + email writing)', 'Settings → Claude key'],
@@ -443,6 +446,7 @@ async function loadToday() {
   ];
   const left = setup.filter((x) => !x[0]).length;
   el.innerHTML = `
+    ${seedBanner}
     ${left ? `<div class="card"><div class="row"><h2 style="flex:1">Setup</h2><span class="muted small">${setup.length - left} of ${setup.length} done</span></div>
       ${setup.map(([ok, txt, where], i) => `<div class="step ${ok ? 'done' : ''}"><span class="n">${ok ? '✓' : i + 1}</span><div><div class="t">${esc(txt)}</div>${!ok && where ? `<div class="small muted">${esc(where)}</div>` : ''}</div></div>`).join('')}
       <p class="small muted" style="margin-bottom:0">Until the inbox exists, everything else works: research, drafts, Copy, and "I sent it myself".</p></div>` : ''}
