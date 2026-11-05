@@ -1,7 +1,7 @@
 // Backlinks: find sites that might link to the comparison site, pitch them, and check that won links stay live.
 // Pitches are rows in `messages` with brand_id = 0 and prospect_id set, so they share drafts, sending,
 // the daily limit, reply checking and forwarding with brand emails.
-import { fail, all, first, cfg, parseJ, nodash, domainOf, EMAIL_RE, getMeta } from './util.js';
+import { fail, all, first, cfg, parseJ, nodash, domainOf, EMAIL_RE } from './util.js';
 import { call, textOf, jsonOut, noThink, claudeKey, WRITE_MODEL, RESEARCH_MODEL, titleCase } from './claude.js';
 import { verifyEmail, verifyManual } from './verify.js';
 
@@ -62,7 +62,7 @@ const PROSPECT_STATUSES = ['found', 'ready', 'pitched', 'replied', 'won', 'lost'
 const SHARED_INBOX = /^(info|hello|hi|contact|support|help|editor|editors|team|admin|office|tips|news|submissions|press)@/;
 
 // ---------- reply odds ----------
-export function prospectOdds(p, ownDA = null) {
+export function prospectOdds(p) {
   if (['replied', 'won', 'lost', 'skipped', 'do_not_contact'].includes(p.status)) return null;
   if (p.kind === 'creator') return creatorOdds(p);
   let s = (TACTICS[p.tactic] || TACTICS.other).base;
@@ -70,9 +70,8 @@ export function prospectOdds(p, ownDA = null) {
   if (email) s += SHARED_INBOX.test(email) ? 8 : 16;
   else if (p.contact_url) s += 3;
   else if (p.researched_at) s -= 10;
-  const a = Number(p.authority), own = ownDA == null || ownDA === '' ? null : Number(ownDA);
-  if (p.authority != null && own != null) { const g = a - own; s += g <= 10 ? 6 : g <= 25 ? 2 : g <= 40 ? -4 : g <= 60 ? -10 : -16; }
-  else if (a >= 70) s -= 12; else if (a >= 50) s -= 5; else if (a > 0 && a < 30) s += 5;
+  const a = Number(p.authority);
+  if (a >= 70) s -= 12; else if (a >= 50) s -= 5; else if (a > 0 && a < 30) s += 5;
   if (p.status === 'pitched') s -= 5;
   return Math.max(3, Math.min(97, Math.round(s)));
 }
@@ -91,32 +90,8 @@ function creatorOdds(p) {
 }
 export async function refreshProspectOdds(env, id) {
   const rows = id ? await all(env, `SELECT * FROM link_prospects WHERE id=?`, id) : await all(env, `SELECT * FROM link_prospects`);
-  const own = (await getMeta(env, ['own_da'])).own_da ?? null;
-  const stmts = rows.map((p) => env.DB.prepare(`UPDATE link_prospects SET odds=? WHERE id=?`).bind(prospectOdds(p, own), p.id));
+  const stmts = rows.map((p) => env.DB.prepare(`UPDATE link_prospects SET odds=? WHERE id=?`).bind(prospectOdds(p), p.id));
   for (let i = 0; i < stmts.length; i += 200) await env.DB.batch(stmts.slice(i, i + 200));
-}
-
-// ---------- Domain Authority (Moz, through the audits Worker; each site is looked up once and kept 60 days there) ----------
-async function mozDA(env, domains) {
-  if (!env.RESEARCH) throw fail('Moz is not connected: the RESEARCH service binding is missing.', 503);
-  const r = await env.RESEARCH.fetch(new Request('https://internal/internal/da', { method: 'POST', body: JSON.stringify({ domains }) }));
-  const d = await r.json().catch(() => ({}));
-  if (!r.ok) throw fail(d.error || `Moz lookup failed (${r.status})`, 502);
-  return d;
-}
-export async function fillAuthority(env, ids = null) {
-  const s = await cfg(env);
-  const own = domainOf(s.site_url || '') || 'cribpicks.com';
-  const rows = ids && ids.length
-    ? await all(env, `SELECT id, domain FROM link_prospects WHERE kind='site' AND authority IS NULL AND id IN (${ids.map(() => '?').join(',')})`, ...ids)
-    : await all(env, `SELECT id, domain FROM link_prospects WHERE kind='site' AND authority IS NULL AND COALESCE(domain,'')!='' ORDER BY id DESC LIMIT 199`);
-  const d = await mozDA(env, [own, ...rows.map((r) => r.domain)]);
-  const ownDA = d.da?.[own]?.da;
-  if (ownDA != null) await env.DB.prepare(`INSERT OR REPLACE INTO meta (key, value) VALUES ('own_da', ?)`).bind(String(Math.round(ownDA))).run();
-  const ups = rows.filter((r) => d.da?.[r.domain]?.da != null).map((r) => env.DB.prepare(`UPDATE link_prospects SET authority=? WHERE id=?`).bind(Math.round(d.da[r.domain].da), r.id));
-  for (let i = 0; i < ups.length; i += 100) await env.DB.batch(ups.slice(i, i + 100));
-  await refreshProspectOdds(env);
-  return { updated: ups.length, missing: rows.length - ups.length, own_da: ownDA != null ? Math.round(ownDA) : null, error: d.error || null };
 }
 
 // ---------- our pages (what a prospect could link to) ----------
@@ -168,12 +143,6 @@ export async function listProspects(env, url) {
   if (p.get('status')) { where.push('status=?'); params.push(p.get('status')); }
   else if (p.get('hide_done') !== '0') where.push(`status NOT IN ('skipped','do_not_contact','lost')`);
   if (p.get('tactic')) { where.push('tactic=?'); params.push(p.get('tactic')); }
-  if (p.get('odds') === 'likely') where.push('odds >= 65');
-  if (p.get('odds') === 'might') where.push('odds >= 45 AND odds < 65');
-  if (p.get('odds') === 'long') where.push('odds < 45');
-  if (p.get('da_min')) { where.push('authority >= ?'); params.push(Number(p.get('da_min'))); }
-  if (p.get('da_max')) { where.push('(authority IS NULL OR authority <= ?)'); params.push(Number(p.get('da_max'))); }
-  if (p.get('da') === 'none') where.push('authority IS NULL');
   if (p.get('contact') === 'email') where.push(`COALESCE(contact_email,'')!=''`);
   if (p.get('contact') === 'none') where.push(`COALESCE(contact_email,'')='' AND COALESCE(contact_url,'')=''`);
   if (p.get('q')) { const q = `%${p.get('q')}%`; where.push('(name LIKE ? OR domain LIKE ? OR page_title LIKE ? OR notes LIKE ? OR handle LIKE ? OR video_title LIKE ? OR products LIKE ?)'); params.push(q, q, q, q, q, q, q); }
@@ -272,7 +241,6 @@ async function insertProspect(env, x, source) {
 export async function addProspect(env, body) {
   const r = await insertProspect(env, body, 'manual');
   if (r.skipped) throw fail(`Not added: ${r.skipped}.`);
-  if (r.id) await fillAuthority(env, [r.id]).catch(() => {});
   return r;
 }
 
@@ -308,9 +276,7 @@ export async function importProspects(env, body) {
       name: get('name'), tactic }, 'import');
     if (out.ok) added++; else if (out.duplicate) dupes++; else skipped++;
   }
-  let daError = null;
-  if (added) { try { await fillAuthority(env); } catch (e) { daError = e.message; } }
-  return { ok: true, added, duplicates: dupes, skipped, daError };
+  return { ok: true, added, duplicates: dupes, skipped };
 }
 
 // ---------- find prospects with Claude + web search ----------
@@ -345,27 +311,13 @@ Return ONLY JSON, no prose:
   }
   const out = jsonOut(text);
   if (!out || !Array.isArray(out.prospects)) throw fail('Claude came back without a usable list. Try again or change the topic.', 502);
-  const num = (x) => (x === '' || x == null || isNaN(Number(x)) ? null : Math.max(0, Math.min(100, Number(x))));
-  const daMin = num(body.daMin), daMax = num(body.daMax);
-  let list = out.prospects.slice(0, 12), outOfRange = 0, daError = null;
-  if (daMin != null || daMax != null) {
-    try {
-      const d = await mozDA(env, list.map((x) => domainOf(x.url)).filter(Boolean));
-      if (d.error) throw new Error(d.error);
-      list = list.map((x) => ({ ...x, authority: d.da?.[domainOf(x.url)]?.da ?? null }));
-      const before = list.length;
-      list = list.filter((x) => x.authority == null ? daMin == null : (daMin == null || x.authority >= daMin) && (daMax == null || x.authority <= daMax));
-      outOfRange = before - list.length;
-    } catch (e) { daError = e.message; }
-  }
   const added = [];
   let dupes = 0, skipped = 0;
-  for (const x of list) {
+  for (const x of out.prospects.slice(0, 12)) {
     const r = await insertProspect(env, { ...x, tactic }, 'claude');
     if (r.ok) added.push(r.id); else if (r.duplicate) dupes++; else skipped++;
   }
-  if (added.length) { try { await fillAuthority(env, added); } catch (e) { daError ||= e.message; } }
-  return { ok: true, added: added.length, duplicates: dupes, skipped, outOfRange, daError, ids: added };
+  return { ok: true, added: added.length, duplicates: dupes, skipped, ids: added };
 }
 
 // ---------- contact research for one prospect ----------
@@ -673,18 +625,16 @@ export async function checkDueLinks(env, limit = 15) {
 
 // ---------- overview ----------
 export async function linkSummary(env) {
-  const [byStatus, byTactic, links, warn, lost, noDA, meta] = await Promise.all([
+  const [byStatus, byTactic, links, warn, lost] = await Promise.all([
     all(env, `SELECT status k, COUNT(*) n FROM link_prospects WHERE kind='site' GROUP BY status`),
     all(env, `SELECT tactic k, COUNT(*) n FROM link_prospects WHERE kind='site' GROUP BY tactic`),
     all(env, `SELECT status, rel, COUNT(*) n FROM links GROUP BY status, rel`),
     prelaunchWarning(env),
     first(env, `SELECT COUNT(*) n FROM links WHERE status!='live' AND lost_at IS NOT NULL`),
-    first(env, `SELECT COUNT(*) n FROM link_prospects WHERE kind='site' AND authority IS NULL AND status NOT IN ('skipped','do_not_contact','lost')`),
-    getMeta(env, ['own_da']),
   ]);
   return {
     prospects: Object.fromEntries(byStatus.map((r) => [r.k, r.n])), tactics: Object.fromEntries(byTactic.map((r) => [r.k, r.n])),
-    links, lost: lost?.n || 0, warning: warn, noDA: noDA?.n || 0, ownDA: meta.own_da != null ? Number(meta.own_da) : null, tacticInfo: Object.fromEntries(Object.entries(TACTICS).map(([k, v]) => [k, { name: v.name, findable: Boolean(v.find) }])),
+    links, lost: lost?.n || 0, warning: warn, tacticInfo: Object.fromEntries(Object.entries(TACTICS).map(([k, v]) => [k, { name: v.name, findable: Boolean(v.find) }])),
     pages: await ourPages(env), hosts: [...(await ourHosts(env))],
   };
 }
