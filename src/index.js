@@ -821,7 +821,53 @@ async function stats(env) {
     FROM messages m LEFT JOIN replies r ON r.brand_id=m.brand_id AND r.received_at >= m.sent_at
     WHERE m.status IN ('sent','sent_manual') AND m.kind='initial' AND m.brand_id > 0 AND m.sent_at >= datetime('now','-84 days') GROUP BY wk ORDER BY wk`);
   const rate = (a, b) => (b ? Math.round((a / b) * 1000) / 10 : 0);
-  return { brands, contacted, replied, replyRate: rate(replied, contacted), partners, declined, sent, sentManual, asks, permissions, expiring, byWeek };
+  return { brands, contacted, replied, replyRate: rate(replied, contacted), partners, declined, sent, sentManual, asks, permissions, expiring, byWeek,
+    success: await successRates(env) };
+}
+
+// Success rates: what share of asks got a yes, and which attempt / kind of inbox actually gets replies.
+// A reply counts for the attempt that was running when it arrived (between that attempt's first email and the next attempt's).
+const ASK_YES_STATES = { image_status: ['approved'], affiliate_status: ['approved'], sample_status: ['approved', 'received'], collab_status: ['approved'], feed_status: ['approved'] };
+const NOT_ASKED = ['none', 'found', 'no_program'];
+function inboxType(email, form) {
+  if (form) return 'Website form';
+  const local = String(email || '').split('@')[0].toLowerCase();
+  if (!local) return 'Unknown';
+  if (/press|^pr$|^pr[._-]|media|publicity|news/.test(local)) return 'Press / PR inbox';
+  if (/partner|collab|influenc|creator|affiliat|ambassador|sponsor/.test(local)) return 'Partnerships inbox';
+  if (/market|brand|social|growth|comms|communications/.test(local)) return 'Marketing inbox';
+  if (/^(info|hello|hi|contact|support|care|customer|service|help|team|sales|wholesale|orders?|office|admin|general)\b/.test(local)) return 'General inbox';
+  return 'A named person';
+}
+async function successRates(env) {
+  const asks = {};
+  for (const [col, yes] of Object.entries(ASK_YES_STATES)) {
+    const r = await first(env, `SELECT SUM(CASE WHEN ${col} NOT IN (${NOT_ASKED.map((x) => `'${x}'`).join(',')}) THEN 1 ELSE 0 END) asked,
+      SUM(CASE WHEN ${col} IN (${yes.map((x) => `'${x}'`).join(',')}) THEN 1 ELSE 0 END) yes,
+      SUM(CASE WHEN ${col}='declined' THEN 1 ELSE 0 END) no FROM brands`);
+    asks[col] = { asked: r?.asked || 0, yes: r?.yes || 0, no: r?.no || 0 };
+  }
+  const anyYes = (await first(env, `SELECT COUNT(*) n FROM brands WHERE last_contacted_at IS NOT NULL AND (${Object.entries(ASK_YES_STATES)
+    .map(([c, y]) => `${c} IN (${y.map((x) => `'${x}'`).join(',')})`).join(' OR ')})`))?.n || 0;
+  const rows = await all(env, `WITH att AS (
+      SELECT brand_id, COALESCE(attempt,1) n, MIN(sent_at) start, MIN(to_email) to_email, MAX(CASE WHEN kind='form' THEN 1 ELSE 0 END) form
+      FROM messages WHERE brand_id > 0 AND status IN ('sent','sent_manual') AND kind IN ('initial','form') GROUP BY brand_id, COALESCE(attempt,1)),
+    win AS (SELECT a.*, (SELECT MIN(b.start) FROM att b WHERE b.brand_id=a.brand_id AND b.n > a.n) nxt FROM att a)
+    SELECT w.n, w.to_email, w.form, w.start, (SELECT MIN(r.received_at) FROM replies r WHERE r.brand_id=w.brand_id AND r.kind='reply'
+      AND r.received_at >= w.start AND (w.nxt IS NULL OR r.received_at < w.nxt)) replied_at, w.nxt FROM win w`);
+  const now = Date.now(), ageDays = (t) => (now - Date.parse(String(t).replace(' ', 'T') + 'Z')) / 864e5;
+  const byAttempt = {}, byInbox = {}, speed = [];
+  for (const r of rows) {
+    // Too early to call: no reply yet, the attempt is still running and is under a week old.
+    const pending = !r.replied_at && !r.nxt && ageDays(r.start) < 7;
+    const a = (byAttempt[r.n >= 4 ? 4 : r.n] ||= { sent: 0, replied: 0, pending: 0 });
+    const t = (byInbox[inboxType(r.to_email, r.form)] ||= { sent: 0, replied: 0, pending: 0 });
+    for (const o of [a, t]) { if (pending) o.pending++; else { o.sent++; if (r.replied_at) o.replied++; } }
+    if (r.replied_at) speed.push(ageDays(r.start) - ageDays(r.replied_at));
+  }
+  speed.sort((x, y) => x - y);
+  const median = speed.length ? Math.round(speed[Math.floor(speed.length / 2)] * 10) / 10 : null;
+  return { asks, anyYes, byAttempt, byInbox, medianDaysToReply: median };
 }
 
 async function exportBrands(env) {

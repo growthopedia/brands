@@ -139,6 +139,8 @@ dialog::backdrop{background:rgba(47,59,44,.4)}
 .rewrite input{flex:1;min-width:0}
 .bars .b{display:flex;align-items:center;gap:8px;font-size:13px;margin:4px 0}
 .bars .b span:first-child{width:90px;color:var(--soft)}
+.success .b span:first-child{width:200px;flex:none}.success .b>span:last-child{white-space:nowrap}
+@media (max-width:640px){.success .b{flex-wrap:wrap}.success .b span:first-child{width:100%}}
 .bars .track{flex:1;height:10px;background:var(--mist);border-radius:6px;overflow:hidden;display:flex}
 .bars .track i{display:block;height:100%}
 .weeks{display:flex;align-items:flex-end;gap:6px;height:140px;padding-top:10px}
@@ -1558,6 +1560,26 @@ async function logPermissionDlg() {
 }
 
 // ---------- RESULTS ----------
+// Success rate: yes ÷ asked for each ask, and reply rate by attempt and by kind of inbox.
+function successCard(s) {
+  const S2 = s.success; if (!S2) return '';
+  const pct = (a, b) => (b ? Math.round((a / b) * 100) : 0);
+  const few = (n) => n < 5 ? ' <span class="muted">(too few to tell)</span>' : '';
+  const meter = (a, b) => `<div class="track" style="flex:1;min-width:80px"><i style="width:${pct(a, b)}%;background:var(--rain)"></i></div>`;
+  const line = (l, yes, of, extra = '') => `<div class="b"><span>${esc(l)}</span>${meter(yes, of)}<span class="small">${of ? `<b>${pct(yes, of)}%</b> · ${yes} of ${of}${few(of)}` : '<span class="muted">not asked yet</span>'}${extra}</span></div>`;
+  const attName = { 1: 'Attempt 1: first email', 2: 'Attempt 2: second address', 3: 'Attempt 3: third address', 4: 'Attempt 4: website form' };
+  const inboxes = Object.entries(S2.byInbox).sort((a, b) => b[1].sent - a[1].sent);
+  const pendingNote = (o) => o.pending ? ` · ${o.pending} still waiting` : '';
+  return `<div class="card bars success"><h3 style="margin-bottom:4px">Success rate</h3>
+    <div class="small muted" style="margin-bottom:10px">${s.contacted ? `<b>${pct(S2.anyYes, s.contacted)}%</b> of brands you contacted said yes to at least one thing (${S2.anyYes} of ${s.contacted})` : 'Nothing sent yet'}${S2.medianDaysToReply != null ? ` · typical reply comes in <b>${S2.medianDaysToReply} days</b>` : ''}</div>
+    <div class="small muted" style="margin:6px 0 4px"><b>Yes rate by ask</b> (said yes out of asked)</div>
+    ${Object.entries(ASK_LABEL).map(([k, l]) => line(l, S2.asks[k].yes, S2.asks[k].asked, S2.asks[k].no ? ` · ${S2.asks[k].no} said no` : '')).join('')}
+    <div class="small muted" style="margin:14px 0 4px"><b>Reply rate by attempt</b> (replied out of brands tried; emails from the last week aren't counted yet)</div>
+    ${[1, 2, 3, 4].map((n) => S2.byAttempt[n] ? line(attName[n], S2.byAttempt[n].replied, S2.byAttempt[n].sent, pendingNote(S2.byAttempt[n])) : '').join('') || '<div class="small muted">No attempts yet.</div>'}
+    <div class="small muted" style="margin:14px 0 4px"><b>Reply rate by kind of inbox</b> (shows which addresses are worth trying first)</div>
+    ${inboxes.map(([l, o]) => line(l, o.replied, o.sent, pendingNote(o))).join('') || '<div class="small muted">No emails yet.</div>'}
+  </div>`;
+}
 async function loadStats() {
   const s = await api('/api/stats');
   const bar = (obj, order, colors) => {
@@ -1571,6 +1593,7 @@ async function loadStats() {
     <div class="kpis">${[[s.contacted, 'Brands contacted'], [s.replied, 'Replied'], [s.replyRate + '%', 'Reply rate'], [s.partners, 'Partners'],
       [s.permissions, 'Active image permissions'], [(s.asks.affiliate_status.approved || 0), 'Affiliate approvals']].map(([v, l]) => `<div class="card kpi"><div class="v">${v}</div><div class="l">${l}</div></div>`).join('')}</div>
     ${s.expiring.length ? `<div class="banner warn"><span>Image permission ending soon: ${s.expiring.map((e) => `${esc(e.brand)} (${esc(e.expires_on)})`).join(', ')}. Ask to renew or take the images down.</span></div>` : ''}
+    ${successCard(s)}
     <div class="card bars"><h3 style="margin-bottom:8px">Asks</h3>
       ${row('image_status', ['none', 'asked', 'replied', 'approved', 'declined'])}
       ${row('affiliate_status', ['none', 'found', 'applied', 'approved', 'declined', 'no_program'])}
