@@ -181,12 +181,60 @@ dialog::backdrop{background:rgba(47,59,44,.4)}
   .kpis.tight .kpi .l{font-size:12px}
   nav button.more-btn{display:flex}
 }
+/* ---- Layout matching the Growthopedia outreach app: left rail, top bar, side panel, pipeline boards (desktop) ---- */
+.bar{display:none}
+.rail-icon{display:none}
+.board{display:grid;grid-template-columns:repeat(var(--cols,5),minmax(210px,1fr));gap:12px;overflow-x:auto;padding-bottom:6px;align-items:start}
+.col{background:#efe9da;border-radius:12px;padding:10px;min-height:260px;display:flex;flex-direction:column;gap:8px}
+.col h4{margin:0;font:800 11.5px/1.2 var(--body);text-transform:uppercase;letter-spacing:.06em;color:var(--soft);display:flex;align-items:center;gap:6px;padding:2px 4px 4px}
+.col h4 i{width:8px;height:8px;border-radius:99px;display:inline-block}.col h4 .c{margin-left:auto;background:var(--cloud);border-radius:99px;padding:0 7px;font-size:11px;color:var(--ink)}
+.pc{background:var(--cloud);border:1px solid var(--line);border-radius:10px;padding:10px 11px;cursor:pointer;display:flex;flex-direction:column;gap:5px}
+.pc:hover{border-color:var(--rain);box-shadow:0 2px 10px rgba(47,59,44,.10)}
+.pc .d{display:flex;gap:8px;align-items:center;font-weight:700;font-size:14px;min-width:0}.pc .d span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pc .m{display:flex;gap:4px 6px;align-items:center;flex-wrap:wrap;font-size:12px;color:var(--soft)}.pc .m .tag{margin:0;font-size:11px;padding:1px 8px}
+.pc .q{font-size:12px;color:var(--soft);font-style:italic;border-left:2px solid var(--sage);padding-left:7px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pct{font:800 11px/1 var(--body);border-radius:99px;padding:3px 8px}.pct.good{background:var(--rain-soft);color:var(--rain-dark)}.pct.info{background:var(--info-soft);color:var(--info)}.pct.warn{background:var(--sun-soft);color:var(--sun-ink)}
+.fav{width:18px;height:18px;border-radius:4px;flex:none;background:var(--mist)}
+.colmore{font-size:12px;color:var(--soft);text-align:center;padding:4px;cursor:pointer}
+.vseg{display:inline-flex;border:1.5px solid var(--line);border-radius:10px;overflow:hidden;background:var(--cloud)}
+.vseg button{border:0;background:none;padding:6px 12px;font:700 13px/1 var(--body);color:var(--ink);cursor:pointer;border-right:1px solid var(--line)}.vseg button:last-child{border:0}
+.vseg button.on{background:var(--rain);color:#fff}
+@media (min-width:721px){
+  body{background:#f6f2e8}
+  header{position:fixed;inset:0 auto 0 0;width:96px;z-index:30;background:var(--cloud);border-bottom:0;border-right:1px solid var(--line);display:flex;flex-direction:column;padding:10px 8px;gap:2px;overflow-y:auto}
+  header .top{display:contents}
+  header .logo{order:0;justify-content:center;height:58px;margin-bottom:8px;border-radius:14px;background:var(--mist)}
+  header .logo img.logo-img,header .logo small{display:none}
+  header .rail-icon{display:block;width:40px;height:40px;object-fit:contain}
+  header .spacer,header .pill,header .iconbtn{display:none}
+  nav{order:1;flex-direction:column;padding:0;margin:0;gap:2px;overflow:visible;max-width:none}
+  nav button{display:flex;flex-direction:column;align-items:center;gap:4px;padding:9px 4px;border-radius:10px;border:0;font:700 11.5px/1.15 var(--body);color:var(--soft);text-align:center;white-space:normal}
+  nav button svg{display:block;width:22px;height:22px}
+  nav button:hover{background:var(--mist);color:var(--ink)}
+  nav button.on{background:var(--rain-soft);color:var(--rain-dark)}
+  nav button.more-btn{display:none!important}
+  .count{position:absolute;top:4px;right:12px;margin:0;font-size:10.5px;padding:0 6px;background:var(--fox);color:#fff}
+  .shell{margin-left:96px;min-height:100vh}
+  .bar{position:sticky;top:0;z-index:20;background:var(--cloud);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:14px;padding:10px 28px;min-height:58px}
+  .bar .t{font:600 19px/1.2 var(--head);color:var(--ink)}
+  main{max-width:1500px;margin:0;padding:22px 28px 60px}
+  main section>.row:first-child>h2:first-child{display:none}
+  .card{border-radius:12px;box-shadow:none}
+  .kpi .v{font-size:26px}
+  dialog{margin:0 0 0 auto;height:100vh;max-height:100vh;width:min(780px,100vw);border-radius:0;box-shadow:-10px 0 40px rgba(0,0,0,.14)}
+  dialog[open]{animation:slidein .18s ease-out}
+  dialog::backdrop{background:rgba(47,59,44,.28)}
+  .dlg-head{background:var(--cloud)}
+  .dlg-body{max-height:calc(100vh - 64px)}
+}
+@keyframes slidein{from{transform:translateX(40px);opacity:.6}to{transform:none;opacity:1}}
+@media (max-width:720px){.board{grid-template-columns:repeat(var(--cols,5),minmax(240px,82vw));scroll-snap-type:x mandatory}.col{scroll-snap-align:start}}
 </style>
 </head>
 <body>
 <header>
   <div class="top">
-    <a class="logo" href="#today"><img class="logo-img" src="/brand/cribpicks-logo.png" width="1025" height="416" alt="Cribpicks"><span id="siteName" class="sr">Cribpicks</span><small>Brands</small></a>
+    <a class="logo" href="#today"><img class="rail-icon" src="/brand/favicon-192.png" alt=""><img class="logo-img" src="/brand/cribpicks-logo.png" width="1025" height="416" alt="Cribpicks"><span id="siteName" class="sr">Cribpicks</span><small>Brands</small></a>
     <div class="spacer"></div>
     <span class="pill hide-sm" id="sentPill"></span>
     <button class="iconbtn" title="Settings" aria-label="Settings" onclick="openSettings()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
@@ -200,13 +248,15 @@ dialog::backdrop{background:rgba(47,59,44,.4)}
     <button data-tab="links"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2l2.4 4.9 5.4.8-3.9 3.8.9 5.4L12 14.4 7.2 17l.9-5.4L4.2 7.7l5.4-.8z"/><path d="M8 21h8"/></svg>Links</button>
     <button data-tab="creators" class="more-sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="m16 10 5-3v10l-5-3"/></svg>Creators</button>
     <button data-tab="grow" class="more-sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></svg>Grow</button>
-    <button data-tab="permissions" class="more">Approvals</button>
-    <button data-tab="rereach" class="more">Re-reach</button>
-    <button data-tab="stats" class="more">Results</button>
-    <button data-tab="guide" class="more">Guide</button>
+    <button data-tab="permissions" class="more"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 6 9 17l-5-5"/></svg>Approvals</button>
+    <button data-tab="rereach" class="more"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>Re-reach</button>
+    <button data-tab="stats" class="more"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>Results</button>
+    <button data-tab="guide" class="more"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5z"/><path d="M4 19.5V21h16"/></svg>Guide</button>
     <button class="more-btn" onclick="moreMenu()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg>More</button>
   </nav>
 </header>
+<div class="shell">
+<div class="bar"><span class="t" id="pageTitle">Today</span><span class="spacer" style="flex:1"></span><span class="pill" id="sentPill2"></span><button class="iconbtn" title="Settings" aria-label="Settings" onclick="openSettings()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button></div>
 <main>
   <div id="banners"></div>
   <section id="tab-today"></section>
@@ -222,6 +272,7 @@ dialog::backdrop{background:rgba(47,59,44,.4)}
   <section id="tab-stats" hidden></section>
   <section id="tab-guide" class="guide" hidden></section>
 </main>
+</div>
 <dialog id="dlg"><div class="dlg-head"><h3 id="dlgTitle" class="ellipsis" style="flex:1;font-size:19px"></h3><button class="btn sm ghost" onclick="closeDlg()">Close</button></div><div class="dlg-body" id="dlgBody"></div></dialog>
 
 <script>
@@ -302,6 +353,7 @@ const LOADERS = { today: loadToday, brands: loadBrands, drafts: loadDrafts, repl
 function showTab(name) {
   if (!LOADERS[name]) name = 'today';
   $$('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.tab === name));
+  $('#pageTitle').textContent = ({ grow: 'Grow @thecribpicks', permissions: 'Approvals', rereach: 'Re-reach', stats: 'Results' })[name] || name[0].toUpperCase() + name.slice(1);
   $$('main > section').forEach((s) => (s.hidden = s.id !== 'tab-' + name));
   if (location.hash !== '#' + name) history.replaceState(null, '', '#' + name);
   LOADERS[name]().catch((e) => toast(e.message));
@@ -316,7 +368,7 @@ async function refreshSummary() {
   S = await api('/api/summary');
   $('#siteName').textContent = S.settings.site_name;
   document.title = `${S.settings.site_name} Brands`;
-  $('#sentPill').textContent = S.sendBlocker ? 'Sending off' : `${S.sentToday}/${S.settings.daily_cap} sent today`;
+  $('#sentPill').textContent = $('#sentPill2').textContent = S.sendBlocker ? 'Sending off' : `${S.sentToday}/${S.settings.daily_cap} sent today`;
   const dc = $('#dCount'); dc.hidden = !S.drafts; dc.textContent = S.drafts;
   const rc = $('#rCount'); rc.hidden = !S.unread; rc.textContent = S.unread;
   const b = [];
@@ -447,12 +499,37 @@ function brandCard(b) {
     ${askTags(b) ? `<div style="margin-top:4px">${askTags(b)}</div>` : ''}
   </div></div>`;
 }
+
+// ---------- pipeline boards (Brands, Creators, Links) ----------
+const VIEW = (() => { try { return JSON.parse(localStorage.getItem('cpViews') || '{}'); } catch { return {}; } })();
+const viewOf = (k) => VIEW[k] || 'board';
+function setView(k, v) { VIEW[k] = v; try { localStorage.setItem('cpViews', JSON.stringify(VIEW)); } catch {} }
+const viewSeg = (k) => `<span class="vseg">${[['board', 'Pipeline'], ['list', 'List']].map(([v, l]) => `<button data-view="${k}:${v}" class="${viewOf(k) === v ? 'on' : ''}">${l}</button>`).join('')}</span>`;
+document.addEventListener('click', (e) => { const b = e.target.closest('[data-view]'); if (!b) return; const [k, v] = b.dataset.view.split(':'); setView(k, v); LOADERS[k]().catch((err) => toast(err.message)); });
+const favOf = (d) => d ? `<img class="fav" src="https://icons.duckduckgo.com/ip3/${esc(d)}.ico" alt="" loading="lazy" onerror="this.style.visibility='hidden'">` : '<span class="fav"></span>';
+const pctTag = (o) => o == null ? '' : `<span class="pct ${oddsTone(o)}" title="${esc(oddsWord(o))}">${o}%</span>`;
+function boardHtml(items, cols, card) {
+  return `<div class="board" style="--cols:${cols.length}">${cols.map((c) => { const L = items.filter((x) => c.s.includes(x.status)); return `<div class="col"><h4><i style="background:${c.c}"></i>${esc(c.l)}<span class="c">${L.length}</span></h4>
+    ${L.slice(0, 50).map(card).join('')}${L.length > 50 ? `<div class="colmore" data-view="${c.k}:list">+${L.length - 50} more in List</div>` : ''}${L.length ? '' : '<div class="colmore" style="padding:20px 0;cursor:default">Empty</div>'}</div>`; }).join('')}</div>`;
+}
+const BRAND_COLS = [{ l: 'Research', s: ['research'], c: '#d9cfb6', k: 'brands' }, { l: 'Ready to email', s: ['ready'], c: '#e9c46a', k: 'brands' }, { l: 'Contacted', s: ['contacted'], c: '#8fa382', k: 'brands' }, { l: 'Replied', s: ['replied'], c: '#c8693a', k: 'brands' }, { l: 'Partner', s: ['partner'], c: '#4f6b47', k: 'brands' }];
+const PROSPECT_COLS = (k) => [{ l: 'Found', s: ['found'], c: '#d9cfb6', k }, { l: 'Ready to pitch', s: ['ready'], c: '#e9c46a', k }, { l: 'Pitched', s: ['pitched'], c: '#8fa382', k }, { l: 'Replied', s: ['replied'], c: '#c8693a', k }, { l: 'Won', s: ['won'], c: '#4f6b47', k }];
+const contactLine = (x) => x.contact_email ? `✉ ${esc(x.contact_email)}` : x.contact_url ? '🔗 Contact form' : x.researched_at ? '<span>No email published</span>' : '<span>Not researched yet</span>';
+const brandPc = (b) => `<div class="pc" data-brand="${b.id}"><div class="d">${favOf(b.domain)}<span>${esc(b.name)}</span></div>
+  <div class="m">${pctTag(b.reply_odds)}<span>${b.product_count} product${b.product_count === 1 ? '' : 's'}</span>${parse(b.sections, []).slice(0, 1).map((x) => `<span class="tag">${esc(x)}</span>`).join('')}</div>
+  <div class="m">${contactLine(b)}</div>${askTags(b) ? `<div class="m">${askTags(b)}</div>` : ''}</div>`;
+const creatorPc = (p) => `<div class="pc" data-prospect="${p.id}"><div class="d"><span>${PLATFORM_ICON[p.platform] || ''} ${esc(p.name || p.handle)}</span></div>
+  <div class="m">${pctTag(p.odds)}${p.followers != null ? `<span>${Number(p.followers).toLocaleString()} followers</span>` : ''}</div>
+  ${p.video_title ? `<div class="q">“${esc(p.video_title)}”</div>` : ''}<div class="m">${p.contact_email ? `✉ ${esc(p.contact_email)}` : p.researched_at ? 'DM them' : 'Not researched yet'}</div></div>`;
+const linkPc = (p) => `<div class="pc" data-prospect="${p.id}"><div class="d">${favOf(p.domain)}<span>${esc(p.name || p.domain)}</span></div>
+  <div class="m">${pctTag(p.odds)}<span class="tag info">${esc(TACTIC_INFO[p.tactic]?.name || p.tactic)}</span></div>
+  ${p.page_title ? `<div class="q">${esc(p.page_title)}</div>` : ''}<div class="m">${contactLine(p)}</div></div>`;
 async function loadBrands() {
   const el = $('#tab-brands');
   if (!FILTERS.sections.length) FILTERS = await api('/api/filters');
   const opt = (v, txt, cur) => `<option value="${esc(v)}" ${v === cur ? 'selected' : ''}>${esc(txt)}</option>`;
   if (!$('#bFilters')) {
-    el.innerHTML = `<div class="row" style="margin-bottom:10px"><h2 style="flex:1">Brands</h2>
+    el.innerHTML = `<div class="row" style="margin-bottom:10px"><h2 style="flex:1">Brands</h2><span id="bView"></span><span class="spacer"></span>
         <button class="btn sm ghost" onclick="checkAllEmails(this)" title="Checks every saved email that hasn't been checked: on the cited page, domain takes mail, matches the brand">Check emails</button>
         <button class="btn sm ghost" onclick="addBrandDlg()">Add a brand</button>
         <a class="btn sm ghost" href="/api/export/brands.csv">Export</a></div>
@@ -482,7 +559,8 @@ async function loadBrands() {
   const p = new URLSearchParams(Object.entries(bf).map(([k, v]) => [k, Array.isArray(v) ? v.join(',') : v]).filter(([, v]) => v));
   const list = await api('/api/brands?' + p);
   $('#bCount').textContent = `${list.length} brand${list.length === 1 ? '' : 's'}`;
-  $('#bList').innerHTML = list.map(brandCard).join('') || '<div class="empty">No brands match.</div>';
+  $('#bView').innerHTML = viewSeg('brands');
+  $('#bList').innerHTML = !list.length ? '<div class="empty">No brands match.</div>' : viewOf('brands') === 'board' ? boardHtml(list, BRAND_COLS, brandPc) : list.map(brandCard).join('');
 }
 let searchT;
 document.addEventListener('input', (e) => {
@@ -900,7 +978,7 @@ async function loadLinks() {
   const lost = sum.lost;
   const seg = (k, t) => `<button class="btn sm ${lf.view === k ? 'primary' : 'ghost'}" onclick="lf.view='${k}';loadLinks()">${t}</button>`;
   const opt = (v, txt, cur) => `<option value="${esc(v)}" ${v === cur ? 'selected' : ''}>${esc(txt)}</option>`;
-  el.innerHTML = `<div class="row" style="margin-bottom:10px"><h2 style="flex:1">Links</h2>
+  el.innerHTML = `<div class="row" style="margin-bottom:10px"><h2 style="flex:1">Links</h2>${lf.view === 'prospects' ? viewSeg('links') : ''}<span class="spacer"></span>
       <button class="btn sm primary" onclick="findDlg()">Find prospects</button><button class="btn sm ghost" onclick="importDlg()">Import list</button><button class="btn sm ghost" onclick="addProspectDlg()">Add one</button></div>
     ${sum.warning ? `<div class="banner warn"><span>${esc(sum.warning)}</span></div>` : ''}
     <div class="kpis tight">${[[Object.values(ps).reduce((a, b) => a + b, 0), 'Prospects'], [ps.pitched || 0, 'Pitched'], [ps.replied || 0, 'Replied'], [ps.won || 0, 'Won'],
@@ -943,7 +1021,7 @@ async function loadProspectList() {
   const p = new URLSearchParams(Object.entries(lf).filter(([k, v]) => v && k !== 'view'));
   const list = await api('/api/links/prospects?' + p);
   $('#lList').innerHTML = `<div class="small muted" style="margin-bottom:8px">${list.length} site${list.length === 1 ? '' : 's'}</div>` +
-    (list.map(prospectCard).join('') || `<div class="empty">No prospects yet. Press <b>Find prospects</b> and Claude will search the web for sites that fit.</div>`);
+    ((list.length && viewOf('links') === 'board' ? boardHtml(list, PROSPECT_COLS('links'), linkPc) : list.map(prospectCard).join('')) || `<div class="empty">No prospects yet. Press <b>Find prospects</b> and Claude will search the web for sites that fit.</div>`);
 }
 let lSearchT;
 document.addEventListener('input', (e) => { if (e.target.dataset?.lf === 'q') { lf.q = e.target.value; clearTimeout(lSearchT); lSearchT = setTimeout(loadProspectList, 300); } });
@@ -1119,7 +1197,7 @@ async function loadCreators() {
   CREATORS = await api('/api/creators/summary');
   const st = CREATORS.statuses, ft = CREATORS.features;
   const opt = (v, txt, cur) => `<option value="${esc(v)}" ${v === cur ? 'selected' : ''}>${esc(txt)}</option>`;
-  el.innerHTML = `<div class="row" style="margin-bottom:10px"><h2 style="flex:1">Creators</h2>
+  el.innerHTML = `<div class="row" style="margin-bottom:10px"><h2 style="flex:1">Creators</h2>${viewSeg('creators')}<span class="spacer"></span>
       <button class="btn sm primary" onclick="findCreatorsDlg()">Find creators</button><button class="btn sm ghost" onclick="addCreatorDlg()">Add one</button></div>
     <p class="small muted" style="margin-top:-4px">Small creators who posted registry or product videos about gear on the site. Invite them to check the comparison page for what they featured and share it if it helps their viewers, and ask to feature them as "Recommended by creators". Every yes is logged in their own words before anything goes on the site.</p>
     <div class="kpis tight">${[[Object.values(st).reduce((a, b) => a + b, 0), 'Creators'], [CREATORS.contacted, 'Contacted'], [CREATORS.replied, 'Replied'],
@@ -1146,7 +1224,7 @@ async function loadCreatorList() {
   const p = new URLSearchParams(Object.entries(cf).filter(([, v]) => v));
   const list = await api('/api/creators?' + p);
   $('#cList').innerHTML = `<div class="small muted" style="margin-bottom:8px">${list.length} creator${list.length === 1 ? '' : 's'}</div>` +
-    (list.map(creatorCard).join('') || `<div class="empty">No creators yet. Press <b>Find creators</b>: pick a category, brand or product and Claude searches YouTube, TikTok, Instagram and blogs.</div>`);
+    ((list.length && viewOf('creators') === 'board' ? boardHtml(list, PROSPECT_COLS('creators'), creatorPc) : list.map(creatorCard).join('')) || `<div class="empty">No creators yet. Press <b>Find creators</b>: pick a category, brand or product and Claude searches YouTube, TikTok, Instagram and blogs.</div>`);
 }
 let cSearchT;
 document.addEventListener('input', (e) => { if (e.target.dataset?.cf === 'q') { cf.q = e.target.value; clearTimeout(cSearchT); cSearchT = setTimeout(loadCreatorList, 300); } });
