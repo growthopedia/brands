@@ -26,6 +26,7 @@ import { handleEmail } from './inbound.js';
 import * as L from './links.js';
 import * as C from './creators.js';
 import * as G from './social.js';
+import { advanceAttempts } from './attempts.js';
 import { verifyEmail, verifyManual } from './verify.js';
 
 let schemaReady = false;
@@ -41,6 +42,12 @@ async function ensureSchema(env) {
     await refreshOdds(env);
   }
   if (!cols.includes('rereach_on')) await env.DB.prepare(`ALTER TABLE brands ADD COLUMN rereach_on TEXT`).run();
+  // Attempts: which try this is (1-3 email, 4 form), what was tried, and addresses named in auto-replies.
+  if (!cols.includes('attempt')) await env.DB.prepare(`ALTER TABLE brands ADD COLUMN attempt INTEGER NOT NULL DEFAULT 1`).run();
+  if (!cols.includes('attempts_log')) await env.DB.prepare(`ALTER TABLE brands ADD COLUMN attempts_log TEXT`).run();
+  if (!cols.includes('leads')) await env.DB.prepare(`ALTER TABLE brands ADD COLUMN leads TEXT`).run();
+  const mcols = (await all(env, `PRAGMA table_info(messages)`)).map((x) => x.name);
+  if (!mcols.includes('attempt')) await env.DB.prepare(`ALTER TABLE messages ADD COLUMN attempt INTEGER NOT NULL DEFAULT 1`).run();
   for (const t of ['brands', 'link_prospects']) {
     const c = (await all(env, `PRAGMA table_info(${t})`)).map((x) => x.name);
     if (!c.includes('email_check')) await env.DB.prepare(`ALTER TABLE ${t} ADD COLUMN email_check TEXT`).run();
@@ -289,6 +296,7 @@ export default {
     ctx.waitUntil((async () => {
       await checkReplies(env).catch((e) => console.error('reply check failed', e));
       await queueFollowups(env).catch((e) => console.error('follow-ups failed', e));
+      await advanceAttempts(env).catch((e) => console.error('attempts failed', e));
       await L.queuePitchFollowups(env).catch((e) => console.error('pitch follow-ups failed', e));
       await L.checkDueLinks(env).catch((e) => console.error('link check failed', e));
     })());
@@ -485,7 +493,7 @@ async function listBrands(env, url) {
   const order = p.get('q') ? `(name LIKE ?) DESC, ${sort}` : sort;
   if (p.get('q')) params.push(`%${p.get('q')}%`);
   return all(env, `SELECT id, name, domain, website, kind, sections, product_count, max_price, has_recall, score, status, contact_name, contact_email,
-      contact_url, reply_odds, email_check, image_status, affiliate_status, affiliate_network, sample_status, collab_status, feed_status, researched_at, follow_up_on, last_contacted_at
+      contact_url, reply_odds, email_check, image_status, affiliate_status, affiliate_network, sample_status, collab_status, feed_status, researched_at, follow_up_on, last_contacted_at, attempt
       FROM brands b ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY ${order} LIMIT 1000`, ...params);
 }
 
@@ -687,7 +695,7 @@ async function approvals(env) {
   const cols = Object.keys(ASK_STATES);
   const rows = await all(env, `SELECT id, name, domain, status, contact_name, contact_email, product_count, reply_odds, rereach_on, last_contacted_at,
       ${cols.join(', ')}, (SELECT COUNT(*) FROM permissions p WHERE p.brand_id=b.id AND p.revoked_on IS NULL) perms
-    FROM brands b WHERE status != 'do_not_contact' AND (status IN ('replied','partner') OR ${cols.map((c) => `${c} IN (${YES[c].map((v) => `'${v}'`).join(',')})`).join(' OR ')})
+    FROM brands b WHERE status != 'do_not_contact' AND (status IN ('replied','partner') OR (status='skipped' AND rereach_on IS NOT NULL AND attempt >= 4) OR ${cols.map((c) => `${c} IN (${YES[c].map((v) => `'${v}'`).join(',')})`).join(' OR ')})
     ORDER BY name COLLATE NOCASE`);
   const today = new Date().toISOString().slice(0, 10);
   const list = rows.map((b) => {
@@ -749,7 +757,7 @@ async function updateReply(env, rid, body) {
 // ---------- drafts ----------
 async function queue(env) {
   return all(env, `SELECT m.*, COALESCE(b.name, lp.name, lp.domain) brand, COALESCE(b.contact_name, lp.contact_name) contact_name,
-      COALESCE(b.contact_url, lp.contact_url) contact_url, COALESCE(b.domain, lp.domain) domain, COALESCE(b.contact_email, lp.contact_email) owner_email, COALESCE(b.email_check, lp.email_check) email_check, b.product_count, b.sections, b.kind brand_kind, lp.tactic, lp.kind lp_kind, lp.platform, lp.handle, lp.url lp_url
+      COALESCE(b.contact_url, lp.contact_url) contact_url, b.research brand_research, COALESCE(b.domain, lp.domain) domain, COALESCE(b.contact_email, lp.contact_email) owner_email, COALESCE(b.email_check, lp.email_check) email_check, b.product_count, b.sections, b.kind brand_kind, lp.tactic, lp.kind lp_kind, lp.platform, lp.handle, lp.url lp_url
     FROM messages m LEFT JOIN brands b ON b.id=m.brand_id AND m.brand_id > 0 LEFT JOIN link_prospects lp ON lp.id=m.prospect_id
     WHERE m.status='draft' AND (b.id IS NOT NULL OR lp.id IS NOT NULL)
     ORDER BY m.kind='reply' DESC, m.kind='followup' DESC, m.prospect_id IS NOT NULL, COALESCE(b.reply_odds, lp.odds, 0) DESC, m.id`);

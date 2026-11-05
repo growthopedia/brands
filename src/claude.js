@@ -1,6 +1,7 @@
 // Claude in the app: research a brand on the web, write the email, rewrite it from feedback, answer a reply.
 import { fail, first, all, cfg, setMeta, parseJ, nodash, EMAIL_RE, logActivity, refreshOdds } from './util.js';
 import { verifyEmail } from './verify.js';
+import { FORM_ATTEMPT, triedEmails, attemptLog, nextAttempt } from './attempts.js';
 
 const API = 'https://api.anthropic.com/v1/messages';
 export const WRITE_MODEL = (env) => env.WRITE_MODEL || 'claude-sonnet-5-5';
@@ -122,15 +123,33 @@ function normNetwork(s) {
   return 'other';
 }
 
+const RETRY_RULES = `
+THIS IS A RETRY. already_tried_no_reply lists addresses Jen already emailed (with a follow-up) and never heard back from, or that bounced.
+Find a DIFFERENT published way in: another team's address (partnerships, marketing, PR agency of record, influencer/creator program),
+a named person in brand marketing or PR whose own address is published, or the parent company's media contact.
+Never return an address from already_tried_no_reply. If nothing new is published, email is null and say so in notes.`;
+
+const FORM_SYSTEM = `You help Jen, who runs a baby gear comparison website, reach a brand that hasn't answered three emails.
+Find the best web FORM on the brand's own site (or its parent company's) to send a partnership/PR message through. Prefer, in order:
+a creator/influencer/affiliate/partnership application or inquiry form > a press/media inquiry form > the general contact form.
+Skip customer-support-only forms (order issues, returns, warranty claims) unless nothing else exists, and say so.
+Only return a URL you actually opened that has a form on it (or a page that clearly links to one). List the fields the form asks for.
+Be quick: 2 to 5 searches.
+Return ONLY JSON: {"form_url": null, "form_kind": "partnership|creator|affiliate|press|contact|support", "form_title": null,
+ "fields": ["Name", "Email", "Message"], "has_subject_field": false, "message_limit": null, "notes": "one sentence", "sources": ["url"]}`;
+
 export async function researchBrand(env, id) {
   const brand = await first(env, `SELECT * FROM brands WHERE id=?`, id);
   if (!brand) throw fail('Brand not found', 404);
+  if ((brand.attempt || 1) >= FORM_ATTEMPT) return researchForm(env, brand);
   const model = RESEARCH_MODEL(env);
   const tool = { type: 'web_search_20250305', name: 'web_search', max_uses: 5 };
-  const messages = [{ role: 'user', content: JSON.stringify({ brand: brand.name, website: brand.website || brand.domain, example_products: (await brandFacts(env, brand)).example_products.slice(0, 4) }) }];
+  const tried = triedEmails(brand);
+  const messages = [{ role: 'user', content: JSON.stringify({ brand: brand.name, website: brand.website || brand.domain, example_products: (await brandFacts(env, brand)).example_products.slice(0, 4),
+    ...(tried.length ? { already_tried_no_reply: tried } : {}) }) }];
   let data, text = '';
   for (let i = 0; i < 3; i++) {
-    data = await call(env, { model, max_tokens: 2500, system: RESEARCH_SYSTEM, tools: [tool], messages, ...noThink(model) });
+    data = await call(env, { model, max_tokens: 2500, system: RESEARCH_SYSTEM + (tried.length ? RETRY_RULES : ''), tools: [tool], messages, ...noThink(model) });
     text += textOf(data);
     if (data.stop_reason !== 'pause_turn') break;
     messages.push({ role: 'assistant', content: data.content });
@@ -151,6 +170,7 @@ export async function researchBrand(env, id) {
     const sup = await first(env, `SELECT reason FROM suppression WHERE email=?`, email);
     if (check.status === 'bad' || sup) { out.rejected_email = email; out.rejected_why = sup ? `on the do-not-contact list (${sup.reason})` : check.note; email = null; }
   }
+  if (email && tried.includes(email)) { out.rejected_email = email; out.rejected_why = 'already tried with no reply'; email = null; }
   const net = normNetwork(out.affiliate_network);
   const sets = [], p = [];
   const fill = (col, val) => { if (val && !brand[col]) { sets.push(`${col}=?`); p.push(String(val).slice(0, 500)); } };
@@ -180,8 +200,32 @@ export async function researchBrand(env, id) {
     await env.DB.prepare(`INSERT INTO contacts (brand_id, name, email, role, note) VALUES (?, ?, ?, ?, ?)`)
       .bind(id, out.contact_name || null, email, (String(out.contact_role || '').length <= 30 ? out.contact_role : null) || out.email_type || null, out.email_source ? `Found at ${out.email_source}` : 'Found by Claude').run();
   await refreshOdds(env, id);
-  await logActivity(env, id, 'research', `Claude researched (${searches} searches)${email ? `, found ${email}` : ', no email published'}`);
+  await logActivity(env, id, 'research', `Claude researched${tried.length ? ` for attempt ${brand.attempt}` : ''} (${searches} searches)${email ? `, found ${email}` : ', no new email published'}`);
   return { ok: true, research: out, foundEmail: email, check };
+}
+
+// Attempt 4: find their form instead of an email.
+async function researchForm(env, brand) {
+  const model = RESEARCH_MODEL(env);
+  const tool = { type: 'web_search_20250305', name: 'web_search', max_uses: 5 };
+  const messages = [{ role: 'user', content: JSON.stringify({ brand: brand.name, website: brand.website || brand.domain, emails_already_tried: triedEmails(brand) }) }];
+  let data, text = '';
+  for (let i = 0; i < 3; i++) {
+    data = await call(env, { model, max_tokens: 1500, system: FORM_SYSTEM, tools: [tool], messages, ...noThink(model) });
+    text += textOf(data);
+    if (data.stop_reason !== 'pause_turn') break;
+    messages.push({ role: 'assistant', content: data.content });
+  }
+  const out = jsonOut(text);
+  if (!out) throw fail('Claude came back without usable results. Try again.', 502);
+  const url = /^https?:\/\//.test(String(out.form_url || '')) ? String(out.form_url).slice(0, 500) : null;
+  const prev = parseJ(brand.research, {}) || {};
+  await env.DB.prepare(`UPDATE brands SET contact_url=COALESCE(?, contact_url), status=?, research=?, researched_at=datetime('now'), updated_at=datetime('now') WHERE id=?`)
+    .bind(url, url ? 'ready' : brand.status, JSON.stringify({ ...prev, form: out }), brand.id).run();
+  await logActivity(env, brand.id, 'research', url ? `Attempt 4: found their ${out.form_kind || 'contact'} form` : 'Attempt 4: no form found');
+  if (!url) await nextAttempt(env, brand.id, 'no form found');
+  await refreshOdds(env, brand.id);
+  return { ok: true, research: out, form: url };
 }
 
 // ---------- the email ----------
@@ -193,6 +237,22 @@ export const ASKS = {
   feed: 'Spec sheets or a product data feed so our specs stay accurate, and an invite for their team to flag anything we got wrong.',
   products: 'Which of their other products they would like added to the site, so their full line is covered (we can add new and upcoming products too).',
 };
+
+const RETRY_EMAIL_RULES = `
+
+THIS IS A RETRY (attempt.number). attempt.earlier_attempts lists addresses Jen already emailed with no reply.
+- Open with one plain line saying she reached out to [that team, e.g. "your press inbox"] in [month] and is trying to reach the right person.
+  Never sound annoyed or guilt-trip. Don't say "following up" (this person never got the first email).
+- Then a shorter version of the pitch: 80 to 130 words total. Same asks.
+- Subject: fresh and specific, not "Re:" and not "Following up".`;
+
+const FORM_RULES = (s, form) => `
+
+THIS GOES INTO A WEBSITE FORM (${form?.form_kind || 'contact'} form${form?.fields?.length ? `; fields: ${form.fields.join(', ')}` : ''}), not an email.
+Jen already emailed three addresses with no reply. Forms strip signatures, so end the message with: Jen, ${s.site_name}, ${s.site_url}${s.sender_email ? `, ${s.sender_email}` : ''}.
+- Start with "Hi," or "Hi <brand name> team,". One line on who Jen is, one line that she's tried email and wanted to try here.
+- 70 to 120 words${form?.message_limit ? `, and under ${form.message_limit} characters` : ''}. Plain text.
+- subject: a short subject for the form's subject or topic field.`;
 
 const WRITE_SYSTEM = (s) => `You write short partnership emails for Jen Cannizzo, who runs ${s.site_name}, an independent baby gear comparison site.
 Jen sends each one herself after reading it. It must sound like her: warm, direct, plain spoken, a parent who knows her stuff.
@@ -270,7 +330,12 @@ export async function draftEmail(env, id, body) {
   const asks = (Array.isArray(body.asks) ? body.asks : ['images', 'products']).filter((a) => ASKS[a]);
   if (!asks.length) throw fail('Pick at least one thing to ask for.');
   const s = await cfg(env);
-  const facts = await brandFacts(env, brand, { link: s.link_first === '1' || !!body.rereach });
+  const n = brand.attempt || 1, isForm = n >= FORM_ATTEMPT && !body.rereach;
+  const facts = await brandFacts(env, brand, { link: s.link_first === '1' || !!body.rereach || n > 1 });
+  // Retry context: which addresses already went unanswered, so the email can say so briefly.
+  const tries = n > 1 && !body.rereach ? attemptLog(brand).map((a) => ({ to: a.to, month: a.first_sent ? new Date(a.first_sent).toLocaleString('en-US', { month: 'long' }) : null, result: a.result })) : null;
+  const form = isForm ? (parseJ(brand.research, {})?.form || {}) : null;
+  if (isForm && !brand.contact_url) throw fail('Find their form first: press Research.');
   let out, model = 'template';
   if (await claudeKey(env)) {
     model = WRITE_MODEL(env);
@@ -282,18 +347,22 @@ export async function draftEmail(env, id, body) {
       said_no_before: Object.keys(yes).filter((c) => brand[c] === 'declined').map((c) => NAMES[c]),
       site_traffic: s.traffic || null,
     } : null;
-    const data = await call(env, { model, max_tokens: 1200, ...noThink(model), system: WRITE_SYSTEM(s),
-      messages: [{ role: 'user', content: JSON.stringify({ ...facts, asks: asks.map((a) => ASKS[a]), rereach, jens_note: String(body.note || '').slice(0, 500) || null }) }] });
+    const data = await call(env, { model, max_tokens: 1200, ...noThink(model), system: WRITE_SYSTEM(s) + (isForm ? FORM_RULES(s, form) : tries ? RETRY_EMAIL_RULES : ''),
+      messages: [{ role: 'user', content: JSON.stringify({ ...facts, asks: asks.map((a) => ASKS[a]), rereach, attempt: tries ? { number: n, earlier_attempts: tries } : null,
+        jens_note: String(body.note || '').slice(0, 500) || null }) }] });
     out = jsonOut(textOf(data));
     if (!out?.subject || !out?.body) throw fail('Claude returned something unexpected. Try again.', 502);
   } else {
     out = templateEmail(s, brand, facts, asks);
+    if (tries) out.body = out.body.replace(/^(Hi[^\n]*\n\n)/, `$1I reached out to ${tries.map((t) => t.to).filter(Boolean).join(' and ')} earlier and didn't hear back, so I'm trying here in case you're the right person.\n\n`);
+    if (isForm) out.body = `${out.body}\n\nJen\n${s.site_name} · ${s.site_url}${s.sender_email ? ' · ' + s.sender_email : ''}`;
   }
   // One open draft per brand: replace the old draft instead of stacking them.
-  await env.DB.prepare(`UPDATE messages SET status='skipped' WHERE brand_id=? AND status='draft' AND kind='initial'`).bind(id).run();
-  if (body.rereach) await env.DB.prepare(`UPDATE brands SET rereach_on=NULL WHERE id=?`).bind(id).run();
-  const r = await env.DB.prepare(`INSERT INTO messages (brand_id, kind, asks, to_email, subject, body, model) VALUES (?, 'initial', ?, ?, ?, ?, ?)`)
-    .bind(id, JSON.stringify(asks), brand.contact_email || null, titleCase(nodash(out.subject)).slice(0, 200), nodash(out.body).slice(0, 5000), model).run();
+  await env.DB.prepare(`UPDATE messages SET status='skipped' WHERE brand_id=? AND status='draft' AND kind IN ('initial','form')`).bind(id).run();
+  if (body.rereach) await env.DB.prepare(`UPDATE brands SET rereach_on=NULL, attempt=1, status=CASE WHEN status='skipped' THEN 'ready' ELSE status END WHERE id=?`).bind(id).run();
+  const r = await env.DB.prepare(`INSERT INTO messages (brand_id, kind, asks, to_email, subject, body, model, channel, attempt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .bind(id, isForm ? 'form' : 'initial', JSON.stringify(asks), isForm ? null : brand.contact_email || null, titleCase(nodash(out.subject)).slice(0, 200),
+      nodash(out.body).slice(0, isForm && form?.message_limit ? Math.max(200, Number(form.message_limit)) : 5000), model, isForm ? 'form' : null, body.rereach ? 1 : n).run();
   return { ok: true, id: r.meta.last_row_id, model };
 }
 
@@ -346,17 +415,17 @@ Return ONLY JSON: {"subject": "Re: ...", "body": "..."}`,
 
 // Hourly: a polite follow-up draft for brands contacted 7+ days ago with no reply (only one per brand).
 export async function queueFollowups(env) {
-  const due = await all(env, `SELECT b.id, b.name, b.contact_name, b.contact_email, m.subject, m.asks, m.to_email FROM brands b
-      JOIN messages m ON m.brand_id=b.id AND m.kind='initial' AND m.status='sent'
+  const due = await all(env, `SELECT b.id, b.name, b.contact_name, b.contact_email, b.attempt, m.subject, m.asks, m.to_email FROM brands b
+      JOIN messages m ON m.brand_id=b.id AND m.kind='initial' AND m.status='sent' AND COALESCE(m.attempt,1)=COALESCE(b.attempt,1)
      WHERE b.status='contacted' AND m.sent_at <= datetime('now','-7 days')
-       AND NOT EXISTS (SELECT 1 FROM messages f WHERE f.brand_id=b.id AND f.kind='followup')
+       AND NOT EXISTS (SELECT 1 FROM messages f WHERE f.brand_id=b.id AND f.kind='followup' AND COALESCE(f.attempt,1)=COALESCE(b.attempt,1))
        AND NOT EXISTS (SELECT 1 FROM replies r WHERE r.brand_id=b.id AND r.kind IN ('reply','optout'))
      LIMIT 20`);
   for (const b of due) {
     const hi = b.contact_name ? `Hi ${b.contact_name.split(' ')[0]},` : 'Hi there,';
     const page = await brandPage(env, b.id);
     const text = `${hi}\n\nJust floating this back to the top of your inbox in case it got buried.${page ? ` Here's the page on our site so you can see how it looks: ${page}` : ''}\n\nHappy to work with whoever handles partnerships or PR, if that's someone else.\n\nThank you!`;
-    await env.DB.prepare(`INSERT INTO messages (brand_id, kind, asks, to_email, subject, body, model) VALUES (?, 'followup', ?, ?, ?, ?, 'template')`)
+    await env.DB.prepare(`INSERT INTO messages (brand_id, kind, asks, to_email, subject, body, model, attempt) VALUES (?, 'followup', ?, ?, ?, ?, 'template', ${Number(b.attempt) || 1})`)
       .bind(b.id, b.asks || '[]', b.to_email || b.contact_email, /^re:/i.test(b.subject) ? b.subject : `Re: ${b.subject}`, text).run();
   }
   return { queued: due.length };

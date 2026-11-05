@@ -1,4 +1,5 @@
 // Gmail: send approved emails and pick up replies, bounces and opt-outs.
+import { nextAttempt, harvestLeads } from './attempts.js';
 import { fail, first, all, setMeta, setMetaStmt, getMeta, cfg, EMAIL_RE, emailIn, sentToday, logActivity, refreshOdds } from './util.js';
 import { markPitched, applyProspectReply } from './links.js';
 import { verifyManual } from './verify.js';
@@ -217,7 +218,9 @@ export function markAsked(env, msg) {
 
 // ---------- replies ----------
 const OPTOUT_RE = /\b(unsubscribe|remove me|take me off|stop (emailing|contacting)|do not (email|contact)|don'?t (email|contact) me|opt[ -]?out)\b/i;
-const AUTO_RE = /(out of (the )?office|automatic reply|auto[- ]?reply|autoreply|away from (my|the) (desk|office)|on vacation|delivery status notification|ticket (#|number)|we('ve| have) received your (message|request|email))/i;
+// Automatic replies don't count as a reply: follow-ups and the next attempt still happen.
+const AUTO_RE = /(out of (the )?office|automatic reply|auto[- ]?reply|autoreply|away from (my|the) (desk|office)|on (vacation|leave|maternity leave|parental leave)|limited access to (my )?email|delivery status notification|ticket (#|number|id)|case (#|number)|request (#|number)|we('ve| have) received your (message|request|email|inquiry|enquiry)|this is an automated|automated (message|response)|do not reply to this (email|message)|(please )?don'?t reply to this (email|message)|we('ll| will) (get back|respond|be in touch) (to you )?within|(our|a) (team|member of our team) will (get back|respond|be in touch)|thank you for (contacting|reaching out to|your (email|message|inquiry))[^.]{0,60}(team|support|customer))/i;
+const AUTO_FROM = /^(no-?reply|noreply|donotreply|do-not-reply|notifications?|auto-?confirm|mailer)@|@(.+\.)?(zendesk|gorgias|freshdesk|helpscout|intercom-mail|kustomer|gladly|richpanel|reamaze)\./i;
 
 export function classify({ from, subject, snippet, headers = {} }) {
   const f = (from || '').toLowerCase();
@@ -226,7 +229,7 @@ export function classify({ from, subject, snippet, headers = {} }) {
   const auto = (headers['auto-submitted'] && headers['auto-submitted'] !== 'no') || headers['x-autoreply'] ||
     headers['x-autorespond'] || /^(auto_reply|bulk|junk)$/i.test(headers['precedence'] || '');
   if (OPTOUT_RE.test(`${subject} ${snippet}`)) return 'optout';
-  if (auto || AUTO_RE.test(`${subject} ${String(snippet || '').slice(0, 200)}`)) return 'auto';
+  if (auto || AUTO_FROM.test(f.replace(/^.*</, '').replace(/>.*$/, '')) || AUTO_RE.test(`${subject} ${String(snippet || '').slice(0, 600)}`)) return 'auto';
   return 'reply';
 }
 
@@ -239,13 +242,13 @@ export async function recordReply(env, r) {
     (r.subject || '').slice(0, 300), (r.snippet || '').slice(0, 500), (r.body || '').slice(0, 20000), r.kind,
     r.receivedAt || new Date().toISOString().replace('T', ' ').slice(0, 19)).run();
   if (!ins.meta.changes) return false;
-  if (r.brandId) await applyReplyEffects(env, r.brandId, r.kind, r.fromEmail);
+  if (r.brandId) await applyReplyEffects(env, r.brandId, r.kind, r.fromEmail, r.body || r.snippet);
   else if (r.prospectId) await applyProspectReply(env, r.prospectId, r.kind, r.fromEmail);
   return true;
 }
 
 // What a reply does to the brand: stops follow-ups, moves status, honors opt-outs, clears bounced addresses.
-export async function applyReplyEffects(env, brandId, kind, fromEmail) {
+export async function applyReplyEffects(env, brandId, kind, fromEmail, text = '') {
   const r = { brandId, kind, fromEmail };
   const stmts = [];
   if (r.kind !== 'auto')
@@ -261,10 +264,15 @@ export async function applyReplyEffects(env, brandId, kind, fromEmail) {
   } else if (r.kind === 'bounce') {
     stmts.push(env.DB.prepare(`INSERT OR IGNORE INTO suppression (email, domain, reason)
       SELECT lower(contact_email), NULL, 'bounce' FROM brands WHERE id=? AND contact_email IS NOT NULL`).bind(r.brandId));
-    stmts.push(env.DB.prepare(`UPDATE brands SET notes = COALESCE(notes || char(10), '') || 'Email bounced: ' || COALESCE(contact_email,'') ||
-      '. Find a new contact.', contact_email=NULL, status = CASE WHEN status='contacted' THEN 'research' ELSE status END WHERE id=?`).bind(r.brandId));
   }
   if (stmts.length) await env.DB.batch(stmts);
+  if (r.kind === 'bounce') {
+    // A bounced address is a failed attempt: move on now instead of waiting.
+    const b = await first(env, `SELECT status, contact_email FROM brands WHERE id=?`, r.brandId);
+    if (b?.status === 'contacted') await nextAttempt(env, r.brandId, 'bounced');
+    else if (b?.contact_email) await env.DB.prepare(`UPDATE brands SET notes = COALESCE(notes || char(10), '') || 'Email bounced: ' || contact_email || '. Find a new contact.', contact_email=NULL WHERE id=?`).bind(r.brandId).run();
+  }
+  if (r.kind === 'auto') await harvestLeads(env, r.brandId, fromEmail, text);
   await refreshOdds(env, brandId);
 }
 

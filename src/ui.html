@@ -493,10 +493,12 @@ function oddsCircle(b) {
   if (b.reply_odds == null) return `<div class="score" title="Already replied or closed">✓</div>`;
   return `<div class="score ${oddsTone(b.reply_odds)}" title="Estimated chance they reply: ${b.reply_odds}%. Research sharpens this.">${b.reply_odds}%</div>`;
 }
+// Which try this is: attempts 2 and 3 go to a different address, attempt 4 is their website form.
+const attemptTag = (b) => (b.attempt || 1) >= 4 ? tag('declined', 'Form') : (b.attempt || 1) > 1 ? tag('asked', 'Attempt ' + b.attempt) : '';
 function brandCard(b) {
   const secs = parse(b.sections, []);
   return `<div class="card brand" data-brand="${b.id}">${oddsCircle(b)}<div class="body">
-    <div class="row"><span class="name" style="flex:1">${esc(b.name)}</span>${tag(b.status)}</div>
+    <div class="row"><span class="name" style="flex:1">${esc(b.name)}</span>${attemptTag(b)}${tag(b.status)}</div>
     <div class="small muted">${b.reply_odds != null ? `<b class="odds-${oddsTone(b.reply_odds)}">${oddsWord(b.reply_odds)}</b> · value ${b.score} · ` : ''}${b.product_count} product${b.product_count === 1 ? '' : 's'}${b.max_price ? ` · up to ${money(b.max_price)}` : ''}${b.domain ? ' · ' + esc(b.domain) : ''}${b.kind === 'store_brand' ? ' · store brand' : ''}</div>
     <div style="margin-top:4px">${secs.slice(0, 4).map((s) => `<span class="tag">${esc(s)}</span>`).join('')}${secs.length > 4 ? `<span class="tag">+${secs.length - 4}</span>` : ''}</div>
     <div class="small" style="margin-top:4px">${b.contact_email ? '✉ ' + esc(b.contact_email) + ' ' + emailBadge(b.email_check) : b.contact_url ? '🔗 Contact form found' : b.researched_at ? '<span class="muted">No email published</span>' : '<span class="muted">Not researched yet</span>'}</div>
@@ -520,7 +522,7 @@ const BRAND_COLS = [{ l: 'Research', s: ['research'], c: '#d9cfb6', k: 'brands' 
 const PROSPECT_COLS = (k) => [{ l: 'Found', s: ['found'], c: '#d9cfb6', k }, { l: 'Ready to pitch', s: ['ready'], c: '#e9c46a', k }, { l: 'Pitched', s: ['pitched'], c: '#8fa382', k }, { l: 'Replied', s: ['replied'], c: '#c8693a', k }, { l: 'Won', s: ['won'], c: '#4f6b47', k }];
 const contactLine = (x) => x.contact_email ? `✉ ${esc(x.contact_email)}` : x.contact_url ? '🔗 Contact form' : x.researched_at ? '<span>No email published</span>' : '<span>Not researched yet</span>';
 const brandPc = (b) => `<div class="pc" data-brand="${b.id}"><div class="d">${favOf(b.domain)}<span>${esc(b.name)}</span></div>
-  <div class="m">${pctTag(b.reply_odds)}<span>${b.product_count} product${b.product_count === 1 ? '' : 's'}</span>${parse(b.sections, []).slice(0, 1).map((x) => `<span class="tag">${esc(x)}</span>`).join('')}</div>
+  <div class="m">${pctTag(b.reply_odds)}${attemptTag(b)}<span>${b.product_count} product${b.product_count === 1 ? '' : 's'}</span>${parse(b.sections, []).slice(0, 1).map((x) => `<span class="tag">${esc(x)}</span>`).join('')}</div>
   <div class="m">${contactLine(b)}</div>${askTags(b) ? `<div class="m">${askTags(b)}</div>` : ''}</div>`;
 const creatorPc = (p) => `<div class="pc" data-prospect="${p.id}"><div class="d"><span>${PLATFORM_ICON[p.platform] || ''} ${esc(p.name || p.handle)}</span></div>
   <div class="m">${pctTag(p.odds)}${p.followers != null ? `<span>${Number(p.followers).toLocaleString()} followers</span>` : ''}</div>
@@ -655,7 +657,13 @@ async function openBrand(id, opts = {}) {
     <div class="sec"><h3 style="flex:1">What you're asking for</h3></div>
     <div class="asks">${Object.entries(ASK_LABEL).map(([k, l]) => `<div class="ask"><b>${l}</b><select data-bf="${k}">${FILTERS.asks[k].map((s) => opt(s, label(s), b[k])).join('')}</select></div>`).join('')}</div>
 
-    <div class="sec"><h3 style="flex:1">Contact</h3>${S.claude.set ? `<button class="btn sm" id="resBtn">${b.researched_at ? 'Research again' : 'Research with Claude'}</button>` : ''}</div>
+    <div class="sec"><h3 style="flex:1">Contact${(b.attempt || 1) > 1 ? ` <span class="small muted">· ${(b.attempt || 1) >= 4 ? 'attempt 4: their website form' : 'attempt ' + b.attempt + ' of 3 by email, then their form'}</span>` : ''}</h3>${S.claude.set ? `<button class="btn sm" id="resBtn">${(b.attempt || 1) >= 4 ? 'Find their form' : (b.attempt || 1) > 1 && !b.contact_email ? 'Find another address' : b.researched_at ? 'Research again' : 'Research with Claude'}</button>` : ''}</div>
+    ${parse(b.attempts_log, []).length || parse(b.leads, []).length ? `<div class="research small" style="margin-bottom:10px"><b>Earlier attempts</b>
+      ${parse(b.attempts_log, []).map((a) => `<div>Attempt ${a.n}: ${esc(a.to || (a.via === 'form' ? 'website form' : 'no address'))}${a.first_sent ? ` · ${esc(a.first_sent)}` : ''} · <b>${esc(a.result)}</b></div>`).join('')}
+      ${parse(b.leads, []).map((l) => `<div>From their auto-reply: ${esc(l.email)} <span class="muted">(${esc(l.seen)})</span></div>`).join('')}
+      <div class="muted" style="margin-top:4px">Claude won't suggest these addresses again. Any real reply stops the attempts.</div></div>` : ''}
+    ${(b.attempt || 1) >= 4 && research?.form ? `<div class="research small" style="margin-bottom:10px"><b>Their form</b> ${research.form.form_url ? `<a href="${esc(research.form.form_url)}" target="_blank" rel="noopener">${esc(research.form.form_title || research.form.form_url)}</a>` : 'none found'}
+      ${research.form.fields?.length ? `<div class="muted">Asks for: ${esc(research.form.fields.join(', '))}${research.form.message_limit ? ` · message up to ${esc(research.form.message_limit)} characters` : ''}</div>` : ''}${research.form.notes ? `<div>${esc(research.form.notes)}</div>` : ''}</div>` : ''}
     ${research?.rejected_email ? `<div class="banner bad"><span>Claude suggested <b>${esc(research.rejected_email)}</b>, but it wasn't saved: ${esc(research.rejected_why || '')}</span></div>` : ''}
     ${research ? `<div class="research"><b>Claude found</b> <span class="small muted">${when(b.researched_at)}</span>
       ${research.notes ? `<div style="margin-top:4px">${esc(research.notes)}</div>` : ''}
@@ -834,6 +842,18 @@ function draftCard(m) {
   const isDm = m.channel === 'dm', isCreator = m.lp_kind === 'creator' || m.tactic === 'creator';
   const kindTag = (isCreator ? tag('info', `Creator${isDm ? ' DM' : ''}`) : m.prospect_id ? tag('info', 'Link pitch' + (m.tactic && TACTIC_INFO[m.tactic] ? ': ' + TACTIC_INFO[m.tactic].name : '')) : '') +
     (m.kind === 'followup' ? tag('info', 'Follow-up') : m.kind === 'reply' ? tag('good', 'Answer to their reply') : m.prospect_id ? '' : parse(m.asks, []).map((a) => tag('', ASK_NAME[a] || a)).join(''));
+  if (m.kind === 'form') {
+    const f = (parse(m.brand_research, {}) || {}).form || {};
+    return `<div class="card" data-msg="${m.id}" data-dm="1" data-form="1">
+    <div class="row"><b style="flex:1;cursor:pointer" data-brandlink="${m.brand_id}">${esc(m.brand)}</b>${tag('declined', 'Attempt 4: website form')}</div>
+    <div class="small muted" style="margin-top:4px">Three emails got no reply, so this one goes through their form. ${m.contact_url ? `<a href="${esc(m.contact_url)}" target="_blank" rel="noopener"><b>Open their form</b></a>` : ''}${f.fields?.length ? ` · it asks for ${esc(f.fields.join(', '))}` : ''}${f.message_limit ? ` · message up to ${esc(f.message_limit)} characters` : ''}</div>
+    <input class="m-to" type="hidden" value="">
+    <label class="f">Subject or topic field</label><input class="m-subj" value="${esc(m.subject)}" style="width:100%">
+    <label class="f">Message</label><textarea class="m-body" style="min-height:150px">${esc(m.body)}</textarea>
+    ${S.claude.set ? `<div class="rewrite"><input class="m-fb" placeholder="Tell Claude what to change"><button class="btn sm" data-mact="rewrite">Rewrite</button></div>` : ''}
+    <div class="row" style="margin-top:12px"><button class="btn primary" data-mact="copy">Copy message</button><button class="btn ghost" data-mact="manual">I filled it in</button>
+      <span class="spacer"></span><button class="btn danger" data-mact="skip">Discard</button></div></div>`;
+  }
   if (isDm) return `<div class="card" data-msg="${m.id}" data-dm="1" data-platform="${esc(m.platform || '')}">
     <div class="row"><b style="flex:1;cursor:pointer" data-prospectlink="${m.prospect_id}">${esc(m.brand)}</b>${kindTag}</div>
     <div class="small muted" style="margin-top:4px">Send this yourself as a direct message to ${esc(m.handle || '')}.${m.lp_url ? ` <a href="${esc(m.lp_url)}" target="_blank" rel="noopener">Open their profile</a>` : ''}</div>
@@ -887,7 +907,7 @@ document.addEventListener('click', async (e) => {
   const card = b.closest('[data-msg]'), id = card.dataset.msg, act = b.dataset.mact;
   const after = async () => { await refreshSummary(); if (currentProspect && dlg.open) openProspect(currentProspect); else if (currentBrand && dlg.open) openBrand(currentBrand); else loadDrafts(); };
   try {
-    if (act === 'copy' && card.dataset.dm) { await navigator.clipboard.writeText($('.m-body', card).value); toast('Copied. Paste it into the DM.'); return; }
+    if (act === 'copy' && card.dataset.dm) { await navigator.clipboard.writeText($('.m-body', card).value); toast(card.dataset.form ? 'Copied. Paste it into their form.' : 'Copied. Paste it into the DM.'); return; }
     if (act === 'copy') {
       const text = `${$('.m-body', card).value}\n${S.signature}`;
       await navigator.clipboard.writeText(`Subject: ${$('.m-subj', card).value}\n\n${text}`); toast('Copied subject and email'); return;
@@ -895,7 +915,7 @@ document.addEventListener('click', async (e) => {
     b.disabled = true;
     if (act === 'send') { await saveDraft(card); await post(`/api/messages/${id}/send`); toast('Sent'); }
     if (act === 'manual') {
-      const how = card.dataset.dm ? `${({ youtube: 'YouTube', tiktok: 'TikTok', instagram: 'Instagram', pinterest: 'Pinterest' })[card.dataset.platform] || 'Social'} DM`
+      const how = card.dataset.form ? 'website form' : card.dataset.dm ? `${({ youtube: 'YouTube', tiktok: 'TikTok', instagram: 'Instagram', pinterest: 'Pinterest' })[card.dataset.platform] || 'Social'} DM`
         : prompt('How did you send it? (contact form, my Growthopedia inbox, Instagram DM…)', $('.m-to', card).value ? 'another inbox' : 'contact form');
       if (how === null) { b.disabled = false; return; }
       await saveDraft(card); await post(`/api/messages/${id}/manual`, { how }); toast('Logged as sent');

@@ -159,6 +159,7 @@ export function replyOdds(b) {
   if (b.affiliate_status === 'no_program') s -= 3;
   if (r?.parent_company && !String(r.parent_company).toLowerCase().includes(String(b.name || '').toLowerCase())) s -= 5;
   if (b.status === 'contacted') s -= 5; // already asked once, no answer yet
+  if ((b.attempt || 1) > 1) s -= 8 * ((b.attempt || 1) - 1); // went quiet before: rank below brands not tried yet
   return Math.max(3, Math.min(97, Math.round(s)));
 }
 
