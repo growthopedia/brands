@@ -275,7 +275,7 @@ async function checkAllEmails(btn) {
   const t = $$('#tabs button.on')[0]?.dataset.tab; if (t) LOADERS[t]();
 }
 const fmtNum = (n) => n == null ? '' : n >= 1e6 ? (n / 1e6).toFixed(n >= 1e7 ? 0 : 1).replace(/\.0$/, '') + 'M' : n >= 1000 ? (n / 1000).toFixed(n >= 1e4 ? 0 : 1).replace(/\.0$/, '') + 'k' : String(n);
-const lf = { view: 'prospects', q: '', status: '', tactic: '', contact: '', sort: 'odds' };
+const lf = { view: 'prospects', q: '', status: '', tactic: '', contact: '', odds: '', da_min: '', da_max: '', sort: 'odds' };
 
 async function api(path, opts = {}) {
   const r = await fetch(path, { ...opts, headers: { 'content-type': 'application/json', ...(opts.headers || {}) } });
@@ -884,7 +884,7 @@ function prospectCard(p) {
   const odds = p.odds == null ? `<div class="score" title="Closed">✓</div>` : `<div class="score ${oddsTone(p.odds)}" title="Estimated chance they answer">${p.odds}%</div>`;
   return `<div class="card brand" data-prospect="${p.id}">${odds}<div class="body">
     <div class="row"><span class="name" style="flex:1">${esc(p.name || p.domain)}</span>${tag(p.status)}</div>
-    <div class="small muted">${p.odds != null ? `<b class="odds-${oddsTone(p.odds)}">${oddsWord(p.odds)}</b> · ` : ''}${esc(p.domain)}${p.authority != null ? ' · authority ' + p.authority : ''}</div>
+    <div class="small muted">${p.odds != null ? `<b class="odds-${oddsTone(p.odds)}">${oddsWord(p.odds)}</b> · ` : ''}${esc(p.domain)}${p.authority != null ? ` · <b>DA ${p.authority}</b>` : ' · DA unknown'}</div>
     <div style="margin-top:4px"><span class="tag info">${esc(TACTIC_INFO[p.tactic]?.name || p.tactic)}</span></div>
     ${p.page_title ? `<div class="small ellipsis" style="margin-top:4px">${esc(p.page_title)}</div>` : ''}
     ${p.why ? `<div class="small muted" style="margin-top:2px">${esc(p.why)}</div>` : ''}
@@ -901,12 +901,14 @@ async function loadLinks() {
   const seg = (k, t) => `<button class="btn sm ${lf.view === k ? 'primary' : 'ghost'}" onclick="lf.view='${k}';loadLinks()">${t}</button>`;
   const opt = (v, txt, cur) => `<option value="${esc(v)}" ${v === cur ? 'selected' : ''}>${esc(txt)}</option>`;
   el.innerHTML = `<div class="row" style="margin-bottom:10px"><h2 style="flex:1">Links</h2>
-      <button class="btn sm primary" onclick="findDlg()">Find prospects</button><button class="btn sm ghost" onclick="importDlg()">Import list</button><button class="btn sm ghost" onclick="addProspectDlg()">Add one</button></div>
+      <button class="btn sm primary" onclick="findDlg()">Find prospects</button><button class="btn sm ghost" onclick="importDlg()">Import list</button><button class="btn sm ghost" onclick="addProspectDlg()">Add one</button>${sum.noDA || sum.ownDA == null ? `<button class="btn sm ghost" id="getDA" title="Look up Moz Domain Authority for sites that don't have it, and for ${esc(sum.hosts[0] || 'your site')}">Get DA${sum.noDA ? ` (${sum.noDA})` : ''}</button>` : ''}</div>
+    ${sum.ownDA != null ? `<div class="small muted" style="margin:-4px 0 10px">Your DA is <b>${sum.ownDA}</b>. Reply odds compare each site's DA to yours.</div>` : ''}
     ${sum.warning ? `<div class="banner warn"><span>${esc(sum.warning)}</span></div>` : ''}
     <div class="kpis tight">${[[Object.values(ps).reduce((a, b) => a + b, 0), 'Prospects'], [ps.pitched || 0, 'Pitched'], [ps.replied || 0, 'Replied'], [ps.won || 0, 'Won'],
       [live, 'Live links'], [follow, 'Followed links'], [lost, 'Lost links']].map(([v, l]) => `<div class="card kpi"><div class="v">${v}</div><div class="l">${l}</div></div>`).join('')}</div>
     <div class="row" style="margin-bottom:12px">${seg('prospects', 'Prospects')}${seg('won', 'Won links')}</div>
     <div id="linksBody"></div>`;
+  if ($('#getDA')) $('#getDA').onclick = async (e) => { const b = e.currentTarget; b.disabled = true; b.textContent = 'Looking up…'; try { const r = await post('/api/links/authority'); toast(r.error ? `Moz: ${r.error}` : `DA added for ${r.updated} sites${r.missing ? `, ${r.missing} have no Moz data` : ''}${r.own_da != null ? `. Your DA: ${r.own_da}` : ''}`); loadLinks(); } catch (err) { toast(err.message); b.disabled = false; b.textContent = 'Get DA'; } };
   const body = $('#linksBody');
   if (lf.view === 'won') {
     const list = await api('/api/links/won');
@@ -933,6 +935,9 @@ async function loadLinks() {
       <input type="search" placeholder="Search sites" value="${esc(lf.q)}" data-lf="q">
       <select data-lf="status">${opt('', 'Open prospects', lf.status)}${['found', 'ready', 'pitched', 'replied', 'won', 'lost', 'skipped', 'do_not_contact'].map((x) => opt(x, label(x), lf.status)).join('')}</select>
       <select data-lf="tactic">${opt('', 'All tactics', lf.tactic)}${Object.entries(TACTIC_INFO).map(([k, v]) => opt(k, `${v.name}${sum.tactics[k] ? ' (' + sum.tactics[k] + ')' : ''}`, lf.tactic)).join('')}</select>
+      <select data-lf="odds">${opt('', 'Any odds', lf.odds)}${opt('likely', 'Likely to reply', lf.odds)}${opt('might', 'Might reply', lf.odds)}${opt('long', 'Long shot', lf.odds)}</select>
+      <select data-lf="da_min">${opt('', 'Min DA', lf.da_min)}${[0, 10, 20, 30, 40, 50, 60].map((x) => opt(String(x), `DA ${x}+`, lf.da_min)).join('')}</select>
+      <select data-lf="da_max">${opt('', 'Max DA', lf.da_max)}${[20, 30, 40, 50, 60, 70, 80].map((x) => opt(String(x), `DA ${x} or lower`, lf.da_max)).join('')}</select>
       <select data-lf="contact">${opt('', 'Any contact', lf.contact)}${opt('email', 'Has email', lf.contact)}${opt('none', 'No contact yet', lf.contact)}</select>
       <select data-lf="sort">${opt('odds', 'Sort: most likely to answer', lf.sort)}${opt('authority', 'Sort: highest authority', lf.sort)}${opt('newest', 'Sort: newest', lf.sort)}${opt('name', 'Sort: A to Z', lf.sort)}${opt('follow_up', 'Sort: follow-up date', lf.sort)}</select>
     </div><div id="lList"></div>`;
@@ -967,15 +972,20 @@ function findDlg() {
     <div class="small muted" id="fHelp" style="margin-top:6px">${esc(TACTIC_HELP.resource)}</div>
     <label class="f">Topic</label><input id="fTopic" style="width:100%" placeholder="e.g. strollers, car seats, baby registry, nursery, breastfeeding">
     <div class="chips">${['baby registry', 'strollers', 'car seats', 'nursery', 'breastfeeding', 'travel with a baby', 'twins'].map((t) => `<button class="chip" data-topic="${t}">${t}</button>`).join('')}</div>
+    <label class="f">Domain Authority to target (optional)</label>
+    <div class="row"><input id="fDaMin" type="number" min="0" max="100" placeholder="Min" style="width:90px"><span class="muted">to</span><input id="fDaMax" type="number" min="0" max="100" placeholder="Max" style="width:90px">
+      ${LINKS?.ownDA != null ? `<button class="chip" data-dar="0,${LINKS.ownDA + 25}">Best odds (up to ${LINKS.ownDA + 25})</button><button class="chip" data-dar="${LINKS.ownDA},${LINKS.ownDA + 45}">Stretch (${LINKS.ownDA} to ${LINKS.ownDA + 45})</button>` : ''}<button class="chip" data-dar=",">Any</button></div>
+    <div class="small muted">Sites outside the range are left out. Checking uses one Moz row per site found, including the ones left out.</div>
     <p class="small muted">Claude runs up to 6 web searches and adds up to 10 new sites, skipping ones you already have. Takes about a minute. Roughly 15 to 30 cents in Claude usage per run (estimate).</p>
     <div class="row"><button class="btn primary" id="fGo">Find prospects</button></div><div id="fOut"></div>`);
   $('#fTactic').onchange = () => ($('#fHelp').textContent = TACTIC_HELP[$('#fTactic').value] || '');
   $$('[data-topic]').forEach((c) => (c.onclick = () => ($('#fTopic').value = c.dataset.topic)));
+  $$('[data-dar]').forEach((c) => (c.onclick = () => { const [a, z] = c.dataset.dar.split(','); $('#fDaMin').value = a; $('#fDaMax').value = z; }));
   $('#fGo').onclick = async (e) => {
     e.target.disabled = true; e.target.textContent = 'Searching the web… (about a minute)';
     try {
-      const r = await post('/api/links/find', { tactic: $('#fTactic').value, topic: $('#fTopic').value });
-      $('#fOut').innerHTML = `<div class="banner info" style="margin-top:12px"><span>Added ${r.added} new site${r.added === 1 ? '' : 's'}${r.duplicates ? `, ${r.duplicates} already on your list` : ''}${r.skipped ? `, ${r.skipped} skipped (retailers, social, your own site)` : ''}.</span></div>`;
+      const r = await post('/api/links/find', { tactic: $('#fTactic').value, topic: $('#fTopic').value, daMin: $('#fDaMin').value, daMax: $('#fDaMax').value });
+      $('#fOut').innerHTML = `<div class="banner info" style="margin-top:12px"><span>Added ${r.added} new site${r.added === 1 ? '' : 's'}${r.duplicates ? `, ${r.duplicates} already on your list` : ''}${r.skipped ? `, ${r.skipped} skipped (retailers, social, your own site)` : ''}${r.outOfRange ? `, ${r.outOfRange} left out for DA outside your range` : ''}.${r.daError ? ` DA lookup failed: ${esc(r.daError)}` : ''}</span></div>`;
       lf.view = 'prospects'; lf.status = ''; lf.tactic = $('#fTactic').value; lf.sort = 'newest';
     } catch (err) { toast(err.message); }
     e.target.disabled = false; e.target.textContent = 'Find more';

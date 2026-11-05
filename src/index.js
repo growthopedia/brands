@@ -202,6 +202,7 @@ export default {
       if (path === '/api/links/summary') return json(await L.linkSummary(env));
       if (path === '/api/links/prospects' && method === 'GET') return json(await L.listProspects(env, url));
       if (path === '/api/links/prospects' && method === 'POST') return json(await L.addProspect(env, await body()));
+      if (path === '/api/links/authority' && method === 'POST') return json(await L.fillAuthority(env));
       if (path === '/api/links/find' && method === 'POST') return json(await L.findProspects(env, await body()));
       if (path === '/api/links/import' && method === 'POST') return json(await L.importProspects(env, await body()));
       if (path === '/api/links/won' && method === 'GET') return json(await L.listLinks(env));

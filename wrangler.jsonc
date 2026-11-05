@@ -24,6 +24,9 @@
     { "binding": "DB", "database_name": "brands", "database_id": "57042927-3fd6-4b3d-9eeb-7fefe58d9fd1" }
   ],
 
+  // Moz Domain Authority lookups go through the audits Worker (it holds the Moz token).
+  "services": [{ "binding": "RESEARCH", "service": "audits" }],
+
   // Hourly: check Gmail for replies (once connected), queue 7-day follow-ups.
   "triggers": { "crons": ["23 * * * *"] },
 
