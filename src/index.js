@@ -818,7 +818,7 @@ async function markManual(env, id, body) {
 // ---------- affiliate programs ----------
 async function affiliates(env, forExport = false) {
   return all(env, `SELECT ${forExport ? '' : 'id, '}name brand, domain, affiliate_status status, affiliate_network network, affiliate_url apply_url, commission, cookie_days,
-      affiliate_notes notes, product_count, score FROM brands
+      affiliate_notes notes, product_count, score${forExport ? '' : ', sections'} FROM brands
     WHERE affiliate_status!='none' OR COALESCE(affiliate_network,'')!='' OR COALESCE(affiliate_url,'')!=''
     ORDER BY CASE affiliate_status WHEN 'approved' THEN 0 WHEN 'applied' THEN 1 WHEN 'found' THEN 2 ELSE 3 END, score DESC`);
 }

@@ -92,6 +92,8 @@ label.f+input,label.f+select,label.f+textarea{width:100%}
 .ptlists{display:grid;grid-template-columns:1fr 1fr;gap:10px 14px;margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}
 .ptlist ul{margin:4px 0 0;padding-left:18px}.ptlist li{margin:3px 0;font-size:14px}
 @media (max-width:640px){.ptgrid{grid-template-columns:1fr}}
+.afstat{text-align:left;cursor:pointer;font:inherit;color:inherit}.afstat.on{border-color:var(--rain);box-shadow:inset 0 0 0 1.5px var(--rain);background:var(--mist)}
+.afnets{margin-bottom:12px}
 .sizechip{border:1.5px solid var(--line);background:var(--cloud);border-radius:99px;padding:6px 12px;font:600 13px/1 var(--body);cursor:pointer;color:var(--ink)}
 .sizechip.on{border-color:var(--rain);background:var(--rain-soft)}
 .sizechip span{color:var(--soft);font-weight:500;margin-left:4px}
@@ -1570,19 +1572,41 @@ async function featuresDlg() {
 }
 
 // ---------- AFFILIATES ----------
+// Filters: tick networks (several at once) and/or tap a status box. Brands with no network listed run their own program.
+const afF = { nets: [], status: '', secs: [] };
+const netOf = (r) => r.network || 'own';
 async function loadAffiliates() {
-  const list = await api('/api/affiliates');
-  const counts = list.reduce((a, r) => ((a[r.status] = (a[r.status] || 0) + 1), a), {});
+  const everything = await api('/api/affiliates');
+  // Category (department) filter applies first: e.g. only brands that sell strollers.
+  const secCounts = everything.reduce((a, r) => { for (const x of parse(r.sections, [])) a[x] = (a[x] || 0) + 1; return a; }, {});
+  const all = everything.filter((r) => !afF.secs.length || parse(r.sections, []).some((x) => afF.secs.includes(x)));
+  const counts = all.filter((r) => !afF.nets.length || afF.nets.includes(netOf(r))).reduce((a, r) => ((a[r.status] = (a[r.status] || 0) + 1), a), {});
+  const netCounts = all.filter((r) => !afF.status || r.status === afF.status).reduce((a, r) => ((a[netOf(r)] = (a[netOf(r)] || 0) + 1), a), {});
+  const netName = (k) => k === 'own' ? 'Own program / not known' : NETWORKS[k] || k;
+  const list = all.filter((r) => (!afF.nets.length || afF.nets.includes(netOf(r))) && (!afF.status || r.status === afF.status));
   const link = (h, t) => `<a class="lk" href="${h}" target="_blank" rel="noopener">${t}</a>`;
   $('#tab-affiliates').innerHTML = `<div class="row" style="margin-bottom:10px"><h2 style="flex:1">Affiliate programs</h2><a class="btn sm ghost" href="/api/export/affiliates.csv">Export</a></div>
     <div class="card"><b>Join these networks first.</b> <span class="muted small">Most baby brands run their program through one of them, so one approved account unlocks many brands. Many networks review your site before approving, so apply once ${esc(S.settings.site_name)} is live on its real domain with an affiliate disclosure and privacy policy.</span>
       <div class="links" style="margin-top:10px">${link('https://impact.com/partners/', 'Impact')}${link('https://www.awin.com/us/publishers', 'Awin (incl. ShareASale)')}${link('https://www.cj.com/publisher', 'CJ')}${link('https://www.avantlink.com/affiliates/', 'AvantLink')}${link('https://rakutenadvertising.com/publishers/', 'Rakuten')}${link('https://partnerize.com/', 'Partnerize')}${link('https://affiliate-program.amazon.com/', 'Amazon Associates')}</div></div>
-    <div class="kpis">${['found', 'applied', 'approved', 'declined', 'no_program'].map((k) => `<div class="card kpi"><div class="v">${counts[k] || 0}</div><div class="l">${label(k)}</div></div>`).join('')}</div>
+    <div class="row" style="gap:8px;margin:4px 0 10px"><span class="small muted"><b>Category</b></span>
+      <details class="fdrop afsec" ${window._afSecOpen ? 'open' : ''} style="min-width:240px"><summary>${afF.secs.length ? esc(afF.secs.join(', ')) : 'All categories'}${afF.secs.length ? ` <span class="fcount">${afF.secs.length}</span>` : ''}</summary>
+        <div class="fmenu">${Object.entries(secCounts).sort((x, y) => y[1] - x[1]).map(([k, n]) => `<label class="chk"><input type="checkbox" data-afsec="${esc(k)}" ${afF.secs.includes(k) ? 'checked' : ''}> ${esc(k)} <span class="muted">(${n})</span></label>`).join('')}</div></details></div>
+    <div class="small muted" style="margin:4px 0 6px"><b>Filter by network</b> (tick any)</div>
+    <div class="checks afnets">${Object.entries(netCounts).sort((x, y) => (x[0] === 'own') - (y[0] === 'own') || y[1] - x[1]).map(([k, n]) =>
+      `<label class="chk"><input type="checkbox" data-afnet="${esc(k)}" ${afF.nets.includes(k) ? 'checked' : ''}> ${esc(netName(k))} <span class="muted">(${n})</span></label>`).join('')}
+      ${afF.nets.length || afF.status || afF.secs.length ? `<button class="btn sm ghost" id="afClear">Clear filters</button>` : ''}</div>
+    <div class="kpis">${['found', 'applied', 'approved', 'declined', 'no_program'].map((k) => `<button class="card kpi afstat ${afF.status === k ? 'on' : ''}" data-afstat="${k}" title="Show only ${label(k)}"><div class="v">${counts[k] || 0}</div><div class="l">${label(k)}</div></button>`).join('')}</div>
+    ${afF.nets.length || afF.status || afF.secs.length ? `<div class="small muted" style="margin-bottom:8px">Showing ${list.length} of ${everything.length}${afF.secs.length ? ` · ${esc(afF.secs.join(', '))}` : ''}${afF.status ? ` · ${label(afF.status)}` : ''}${afF.nets.length ? ` · ${afF.nets.map(netName).join(', ')}` : ''}</div>` : ''}
     ${list.length ? `<div class="card tablewrap"><table><tr><th>Brand</th><th>Status</th><th>Network</th><th>Commission</th><th>Cookie</th><th></th></tr>
-      ${list.map((r) => `<tr><td><a href="#" data-brandlink="${r.id}">${esc(r.brand)}</a><div class="small muted">${r.product_count} products</div></td>
+      ${list.map((r) => `<tr><td><a href="#" data-brandlink="${r.id}">${esc(r.brand)}</a><div class="small muted">${r.product_count} products${parse(r.sections, []).length ? ' · ' + esc(parse(r.sections, []).slice(0, 2).join(', ')) : ''}</div></td>
         <td>${tag(r.status)}</td><td>${esc(NETWORKS[r.network] || r.network || '')}</td><td>${esc(r.commission || '')}</td><td>${esc(r.cookie_days || '')}</td>
         <td>${r.apply_url ? `<a href="${esc(r.apply_url)}" target="_blank" rel="noopener">Apply</a>` : ''}</td></tr>`).join('')}</table></div>`
-      : '<div class="empty">No programs yet. Research brands with Claude, or set a brand\'s affiliate status.</div>'}`;
+      : `<div class="empty">${all.length ? 'No programs match these filters.' : 'No programs yet. Research brands with Claude, or set a brand\'s affiliate status.'}</div>`}`;
+  $$('#tab-affiliates [data-afnet]').forEach((c) => (c.onchange = () => { const k = c.dataset.afnet; afF.nets = c.checked ? [...afF.nets, k] : afF.nets.filter((x) => x !== k); loadAffiliates(); }));
+  $$('#tab-affiliates [data-afstat]').forEach((b) => (b.onclick = () => { afF.status = afF.status === b.dataset.afstat ? '' : b.dataset.afstat; loadAffiliates(); }));
+  $('#afClear')?.addEventListener('click', () => { afF.nets = []; afF.status = ''; afF.secs = []; window._afSecOpen = false; loadAffiliates(); });
+  $$('#tab-affiliates [data-afsec]').forEach((c) => (c.onchange = () => { const k = c.dataset.afsec; afF.secs = c.checked ? [...afF.secs, k] : afF.secs.filter((x) => x !== k); window._afSecOpen = true; loadAffiliates(); }));
+  $('#tab-affiliates .afsec')?.addEventListener('toggle', (e) => { window._afSecOpen = e.target.open; });
 }
 
 // ---------- PERMISSIONS ----------
