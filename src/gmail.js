@@ -1,5 +1,5 @@
 // Gmail: send approved emails and pick up replies, bounces and opt-outs.
-import { nextAttempt, harvestLeads } from './attempts.js';
+import { nextAttempt, harvestLeads, whoReplied, setContactFromReply } from './attempts.js';
 import { fail, first, all, setMeta, setMetaStmt, getMeta, cfg, EMAIL_RE, emailIn, sentToday, logActivity, refreshOdds } from './util.js';
 import { markPitched, applyProspectReply } from './links.js';
 import { verifyManual } from './verify.js';
@@ -236,13 +236,15 @@ export function classify({ from, subject, snippet, headers = {} }) {
 // Save one reply and update the brand. Used by Gmail checking, forwarded mail and manual logging.
 export async function recordReply(env, r) {
   const ins = await env.DB.prepare(
-    `INSERT OR IGNORE INTO replies (brand_id, prospect_id, message_id, source, ext_id, thread_id, from_email, subject, snippet, body, kind, received_at)
+    `INSERT OR IGNORE INTO replies (brand_id, prospect_id, message_id, source, ext_id, thread_id, from_email, from_name, subject, snippet, body, kind, received_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).bind(r.brandId || null, r.prospectId || null, r.messageId || null, r.source, r.extId || null, r.threadId || null, r.fromEmail || null,
+    whoReplied({ fromHeader: r.fromHeader, fromEmail: r.fromEmail, text: r.body || r.snippet }).name || null,
     (r.subject || '').slice(0, 300), (r.snippet || '').slice(0, 500), (r.body || '').slice(0, 20000), r.kind,
     r.receivedAt || new Date().toISOString().replace('T', ' ').slice(0, 19)).run();
   if (!ins.meta.changes) return false;
   if (r.brandId) await applyReplyEffects(env, r.brandId, r.kind, r.fromEmail, r.body || r.snippet);
+  if (r.brandId && r.kind === 'reply') await setContactFromReply(env, r.brandId, { fromHeader: r.fromHeader, fromEmail: r.fromEmail, text: r.body || r.snippet });
   else if (r.prospectId) await applyProspectReply(env, r.prospectId, r.kind, r.fromEmail);
   return true;
 }
@@ -298,7 +300,7 @@ export async function checkReplies(env) {
     if (own.has(fromEmail)) continue;
     const orig = byThread.get(item.threadId);
     const ok = await recordReply(env, {
-      source: 'gmail', extId: item.id, threadId: item.threadId, brandId: orig.brand_id || null, prospectId: orig.prospect_id || null, messageId: orig.id, fromEmail,
+      source: 'gmail', extId: item.id, threadId: item.threadId, brandId: orig.brand_id || null, prospectId: orig.prospect_id || null, messageId: orig.id, fromEmail, fromHeader: headers.from,
       subject: headers.subject, snippet: msg.snippet, kind: classify({ from: headers.from, subject: headers.subject, snippet: msg.snippet, headers }),
       receivedAt: new Date(Number(msg.internalDate) || Date.now()).toISOString().replace('T', ' ').slice(0, 19),
     });

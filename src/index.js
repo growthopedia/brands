@@ -26,7 +26,7 @@ import { handleEmail } from './inbound.js';
 import * as L from './links.js';
 import * as C from './creators.js';
 import * as G from './social.js';
-import { advanceAttempts } from './attempts.js';
+import { advanceAttempts, setContactFromReply } from './attempts.js';
 import * as P from './partners.js';
 import { verifyEmail, verifyManual } from './verify.js';
 
@@ -50,6 +50,19 @@ async function ensureSchema(env) {
   // Partners tab: contact card details.
   for (const c of ['contact_phone', 'contact_linkedin', 'contact_photo', 'partner_people', 'partner_checked_at'])
     if (!cols.includes(c)) await env.DB.prepare(`ALTER TABLE brands ADD COLUMN ${c} TEXT`).run();
+  const rcols = (await all(env, `PRAGMA table_info(replies)`)).map((x) => x.name);
+  if (!rcols.includes('from_name')) await env.DB.prepare(`ALTER TABLE replies ADD COLUMN from_name TEXT`).run();
+  // One time: the person who replied becomes each brand's contact (name + title from their signature).
+  if (!(await first(env, `SELECT 1 FROM meta WHERE key='contacts_from_replies'`))) {
+    const rows = await all(env, `SELECT r.id, r.brand_id, r.from_email, r.body, r.snippet FROM replies r
+      WHERE r.kind='reply' AND r.brand_id IS NOT NULL AND r.from_email IS NOT NULL
+        AND r.received_at = (SELECT MAX(x.received_at) FROM replies x WHERE x.brand_id=r.brand_id AND x.kind='reply' AND x.from_email IS NOT NULL)`);
+    for (const r of rows) {
+      const who = await setContactFromReply(env, r.brand_id, { fromEmail: r.from_email, text: r.body || r.snippet });
+      if (who?.name) await env.DB.prepare(`UPDATE replies SET from_name=? WHERE id=?`).bind(who.name, r.id).run();
+    }
+    await env.DB.prepare(`INSERT OR REPLACE INTO meta (key, value) VALUES ('contacts_from_replies', datetime('now'))`).run();
+  }
   const mcols = (await all(env, `PRAGMA table_info(messages)`)).map((x) => x.name);
   if (!mcols.includes('attempt')) await env.DB.prepare(`ALTER TABLE messages ADD COLUMN attempt INTEGER NOT NULL DEFAULT 1`).run();
   for (const t of ['brands', 'link_prospects']) {
@@ -305,6 +318,7 @@ export default {
       await checkReplies(env).catch((e) => console.error('reply check failed', e));
       await queueFollowups(env).catch((e) => console.error('follow-ups failed', e));
       await advanceAttempts(env).catch((e) => console.error('attempts failed', e));
+      await P.autoFindPeople(env, claudeKey).catch((e) => console.error('people lookup failed', e));
       await L.queuePitchFollowups(env).catch((e) => console.error('pitch follow-ups failed', e));
     })());
   },

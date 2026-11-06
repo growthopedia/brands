@@ -105,3 +105,47 @@ export async function harvestLeads(env, brandId, fromEmail, text) {
   await env.DB.prepare(`UPDATE brands SET leads=? WHERE id=?`).bind(JSON.stringify(leads.slice(-8)), brandId).run();
   await logActivity(env, brandId, 'lead', `Their auto-reply mentioned ${found.join(', ')}. Saved for the next attempt.`);
 }
+
+// Who actually wrote back: display name from the From line, else the name under their sign-off, else first.last@ in the address.
+// Also picks up the title on the line under the name ("Marketing Manager").
+const SIGNOFF = /^(thanks|thank you|thanks so much|many thanks|best|best regards|kind regards|warm regards|warmly|regards|cheers|sincerely|all the best|xo|talk soon|thanks and best regards|thank you and best regards)[,!.]*$/i;
+const NAME_LINE = /^[A-Z][a-zA-Z'’.-]+(?: [A-Z][a-zA-Z'’.-]+){0,3}$/;
+export function whoReplied({ fromHeader, fromEmail, text }) {
+  const disp = String(fromHeader || '').match(/^\s*"?([^"<]+?)"?\s*</)?.[1]?.trim();
+  let name = disp && /\s/.test(disp) && !/@/.test(disp) && !/(team|support|info|marketing|press|pr|customer|service|hello)\b/i.test(disp) ? disp : null;
+  let title = null;
+  const lines = String(text || '').split(/\r?\n/).map((l) => l.replace(/ /g, ' ').trim());
+  const cut = lines.findIndex((l) => /^On .+wrote:$/.test(l) || /^-{2,} ?Original Message/i.test(l) || /^From: /.test(l) || l.startsWith('>'));
+  const body = cut > 0 ? lines.slice(0, cut) : lines;
+  for (let i = body.length - 1; i >= 0; i--) {
+    if (!SIGNOFF.test(body[i])) continue;
+    const rest = body.slice(i + 1).filter(Boolean);
+    if (rest[0] && NAME_LINE.test(rest[0])) {
+      if (!name) name = rest[0];
+      if (rest[1] && rest[1].length <= 60 && !/[@\d]|https?:/.test(rest[1]) && /[a-z]/i.test(rest[1]) && rest[1].toLowerCase() !== (name || '').toLowerCase()) title = rest[1];
+    }
+    break;
+  }
+  if (!name && fromEmail) {
+    const local = String(fromEmail).split('@')[0];
+    if (/^[a-z]+[._-][a-z]+$/i.test(local) && !/(press|media|info|hello|team|support|partner|market|pr)/i.test(local)) name = local.split(/[._-]/).map((w) => w[0].toUpperCase() + w.slice(1)).join(' ');
+  }
+  return { name, title };
+}
+
+// A real reply: the person who answered becomes the brand's contact (name, title, email), so the card and any next email go to them.
+export async function setContactFromReply(env, brandId, { fromHeader, fromEmail, text }) {
+  if (!brandId || !fromEmail || !fromEmail.includes('@')) return null;
+  const s = await cfg(env);
+  const own = [s.sender_email, ...String(s.own_emails || '').split(',')].map((x) => String(x || '').trim().toLowerCase());
+  if (own.includes(fromEmail.toLowerCase())) return null;
+  const who = whoReplied({ fromHeader, fromEmail, text });
+  const before = await first(env, `SELECT contact_email, contact_name FROM brands WHERE id=?`, brandId);
+  const newPerson = String(before?.contact_email || '').toLowerCase() !== fromEmail.toLowerCase()
+    || (who.name && before?.contact_name && who.name.toLowerCase() !== before.contact_name.toLowerCase());
+  if (newPerson) await env.DB.prepare(`UPDATE brands SET contact_linkedin=NULL, contact_photo=NULL, partner_checked_at=NULL WHERE id=?`).bind(brandId).run();
+  await env.DB.prepare(`UPDATE brands SET contact_email=?, contact_name=COALESCE(?, CASE WHEN lower(COALESCE(contact_email,''))=? THEN contact_name ELSE NULL END),
+      contact_role=COALESCE(?, CASE WHEN lower(COALESCE(contact_email,''))=? THEN contact_role ELSE NULL END) WHERE id=?`)
+    .bind(fromEmail.toLowerCase(), who.name, fromEmail.toLowerCase(), who.title, fromEmail.toLowerCase(), brandId).run();
+  return { ...who, newPerson };
+}

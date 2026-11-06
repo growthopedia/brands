@@ -1644,7 +1644,7 @@ function partnerCard(b) {
     <div class="row" style="gap:12px;align-items:flex-start">
       <button class="ptphotobtn" data-ptphoto="${b.id}" title="Add or change photo">${photo}</button>
       <div style="flex:1;min-width:0">
-        <div class="row" style="gap:6px"><b style="font-size:16px">${esc(name)}</b>${b.contact_linkedin ? `<a class="ptli" href="${esc(b.contact_linkedin)}" target="_blank" rel="noopener" title="LinkedIn">${liIcon}</a>` : ''}</div>
+        <div class="row" style="gap:6px"><b style="font-size:16px">${esc(b.contact_name ? `${b.contact_name} @ ${b.name}` : b.name)}</b>${b.contact_linkedin ? `<a class="ptli" href="${esc(b.contact_linkedin)}" target="_blank" rel="noopener" title="LinkedIn">${liIcon}</a>` : ''}</div>
         ${b.contact_role ? `<div class="small">${esc(b.contact_role)}</div>` : ''}
         <div class="small muted" style="cursor:pointer" data-brandlink="${b.id}">${favOf(b.domain)} ${esc(b.name)} ${tag(b.status)}</div>
       </div>
@@ -1653,6 +1653,7 @@ function partnerCard(b) {
       ${b.contact_email ? `<div>✉ <a href="mailto:${esc(b.contact_email)}">${esc(b.contact_email)}</a></div>` : ''}
       ${b.contact_phone ? `<div>☎ <a href="tel:${esc(b.contact_phone.replace(/[^\d+]/g, ''))}">${esc(b.contact_phone)}</a></div>` : ''}
       ${b.contact_linkedin ? `<div>${liIcon} <a href="${esc(b.contact_linkedin)}" target="_blank" rel="noopener">LinkedIn profile</a></div>` : ''}
+      ${extra.photo_page && !b.contact_photo ? `<div>📷 <a href="${esc(extra.photo_page)}" target="_blank" rel="noopener">Their photo is on this page</a> <span class="muted">· right-click it, Copy image address, then tap their circle</span></div>` : ''}
       ${extra.company_linkedin ? `<div>${liIcon} <a href="${esc(extra.company_linkedin)}" target="_blank" rel="noopener">${esc(b.name)} on LinkedIn</a></div>` : ''}
       <div class="muted">🕑 ${last ? `Last contact ${esc(fmtDay(last))} (${esc(daysAgo(last))}) · ${lastWho}` : 'No emails yet'}</div>
     </div>

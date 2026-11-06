@@ -52,6 +52,7 @@ export async function handleEmail(message, env, ctx) {
     }
     await recordReply(env, {
       source: 'forward', extId: email.messageId || `${fromEmail}|${headers.date || Date.now()}`, brandId, prospectId, messageId, fromEmail,
+      fromHeader: email.from?.name ? `"${email.from.name}" <${fromEmail}>` : fromEmail,
       subject: email.subject || '', snippet, body: text.slice(0, 20000),
       kind: classify({ from: `${email.from?.name || ''} <${fromEmail}>`, subject: email.subject, snippet, headers }),
     });
