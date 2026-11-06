@@ -28,6 +28,7 @@ import * as C from './creators.js';
 import * as G from './social.js';
 import { advanceAttempts, setContactFromReply } from './attempts.js';
 import * as P from './partners.js';
+import * as A from './awin.js';
 import { verifyEmail, verifyManual } from './verify.js';
 
 let schemaReady = false;
@@ -48,6 +49,9 @@ async function ensureSchema(env) {
   if (!cols.includes('attempts_log')) await env.DB.prepare(`ALTER TABLE brands ADD COLUMN attempts_log TEXT`).run();
   if (!cols.includes('leads')) await env.DB.prepare(`ALTER TABLE brands ADD COLUMN leads TEXT`).run();
   // Partners tab: contact card details.
+  // Awin: program id, stats, and your tracking link once joined.
+  for (const c of ['awin_kpi', 'affiliate_link']) if (!cols.includes(c)) await env.DB.prepare(`ALTER TABLE brands ADD COLUMN ${c} TEXT`).run();
+  if (!cols.includes('awin_id')) await env.DB.prepare(`ALTER TABLE brands ADD COLUMN awin_id INTEGER`).run();
   for (const c of ['contact_phone', 'contact_linkedin', 'contact_photo', 'partner_people', 'partner_checked_at'])
     if (!cols.includes(c)) await env.DB.prepare(`ALTER TABLE brands ADD COLUMN ${c} TEXT`).run();
   const rcols = (await all(env, `PRAGMA table_info(replies)`)).map((x) => x.name);
@@ -178,6 +182,12 @@ export default {
       if (path === '/api/summary') return json(await summary(env));
       if (path === '/api/settings' && method === 'POST') return json(await saveSettings(env, await body()));
       if (path === '/api/settings/claude' && method === 'POST') return json(await saveClaudeKey(env, await body()));
+      if (path === '/api/awin/token' && method === 'POST') return json(await A.saveAwinToken(env, await body()));
+      if (path === '/api/awin/sync' && method === 'POST') return json(await A.syncAwin(env));
+      if (path === '/api/awin') {
+        const st = await A.awinStatus(env);
+        return json({ ...st, earnings: st.set ? await A.awinEarnings(env).catch((e) => ({ error: e.message })) : null });
+      }
       if (path === '/api/gmail/client' && method === 'POST') return json(await saveGmailClient(env, await body()));
       if (path === '/api/gmail/disconnect' && method === 'POST') return json(await disconnectGmail(env));
       if (path === '/api/import' && method === 'POST') return json(await importRows(env, await body()));
@@ -319,6 +329,7 @@ export default {
       await queueFollowups(env).catch((e) => console.error('follow-ups failed', e));
       await advanceAttempts(env).catch((e) => console.error('attempts failed', e));
       await P.autoFindPeople(env, claudeKey).catch((e) => console.error('people lookup failed', e));
+      await A.awinCron(env).catch((e) => console.error('awin sync failed', e));
       await L.queuePitchFollowups(env).catch((e) => console.error('pitch follow-ups failed', e));
     })());
   },
@@ -818,7 +829,7 @@ async function markManual(env, id, body) {
 // ---------- affiliate programs ----------
 async function affiliates(env, forExport = false) {
   return all(env, `SELECT ${forExport ? '' : 'id, '}name brand, domain, affiliate_status status, affiliate_network network, affiliate_url apply_url, commission, cookie_days,
-      affiliate_notes notes, product_count, score${forExport ? '' : ', sections'} FROM brands
+      affiliate_notes notes, product_count, score${forExport ? ', awin_id' : ', sections, awin_id, awin_kpi, affiliate_link'} FROM brands
     WHERE affiliate_status!='none' OR COALESCE(affiliate_network,'')!='' OR COALESCE(affiliate_url,'')!=''
     ORDER BY CASE affiliate_status WHEN 'approved' THEN 0 WHEN 'applied' THEN 1 WHEN 'found' THEN 2 ELSE 3 END, score DESC`);
 }

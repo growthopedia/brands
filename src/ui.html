@@ -464,8 +464,11 @@ async function loadToday() {
     [Boolean(S.settings.forward_to), 'Reply forwarding set up (Cloudflare Email Routing)', 'Guide → Replies'],
   ];
   const left = setup.filter((x) => !x[0]).length;
+  const AW = await api('/api/awin').catch(() => null);
+  const awinLine = AW?.set && AW.summary ? `<div class="card"><div class="row" style="gap:8px"><div style="flex:1"><b>Awin</b> <span class="small muted">· ${AW.summary.matched} of your brands are on Awin · ${AW.summary.joined} joined · ${AW.summary.pending} pending${AW.earnings && !AW.earnings.error ? ` · <b>$${AW.earnings.commission.toFixed(2)}</b> commission and ${AW.earnings.clicks} clicks in the last 30 days` : ''}</span></div>
+      <button class="btn sm ghost" onclick="showTab('affiliates')">See programs</button></div></div>` : '';
   el.innerHTML = `
-    ${seedBanner}
+    ${seedBanner}${awinLine}
     ${left ? `<div class="card"><div class="row"><h2 style="flex:1">Setup</h2><span class="muted small">${setup.length - left} of ${setup.length} done</span></div>
       ${setup.map(([ok, txt, where], i) => `<div class="step ${ok ? 'done' : ''}"><span class="n">${ok ? '✓' : i + 1}</span><div><div class="t">${esc(txt)}</div>${!ok && where ? `<div class="small muted">${esc(where)}</div>` : ''}</div></div>`).join('')}
       <p class="small muted" style="margin-bottom:0">Until the inbox exists, everything else works: research, drafts, Copy, and "I sent it myself".</p></div>` : ''}
@@ -1575,6 +1578,30 @@ async function featuresDlg() {
 // Filters: tick networks (several at once) and/or tap a status box. Brands with no network listed run their own program.
 const afF = { nets: [], status: '', secs: [] };
 const netOf = (r) => r.network || 'own';
+// Awin on the dashboard: account, what's matched to your brands, and the last 30 days of earnings.
+function awinStats(r) {
+  const k = parse(r.awin_kpi, null); if (!k) return '';
+  const bits = [k.epc != null && `EPC $${Number(k.epc).toFixed(2)}`, k.conversion != null && `${k.conversion}% convert`, k.approval != null && `${Math.round(k.approval)}% approved`].filter(Boolean);
+  return bits.length ? `<div class="small muted">${bits.join(' · ')}</div>` : '';
+}
+function awinCard(AW, rows) {
+  if (!AW) return '';
+  if (!AW.set) return `<div class="card"><b>Connect Awin</b> <span class="small muted">Paste your Awin API token in Settings to match Awin programs to your brands and see earnings here.</span> <button class="btn sm" onclick="openSettings()">Open Settings</button></div>`;
+  const s = AW.summary || {}, e = AW.earnings || {};
+  const aw = (rows || []).filter((r) => r.awin_id);
+  const toJoin = aw.filter((r) => r.status === 'found').sort((a, b) => (parse(b.awin_kpi, {})?.epc || 0) - (parse(a.awin_kpi, {})?.epc || 0));
+  return `<div class="card awin"><div class="row" style="gap:8px"><b style="flex:1">Awin · ${esc(AW.account || 'publisher')} <span class="muted small">(ID ${esc(AW.publisher || '')})</span></b>
+      <span class="small muted">${AW.lastSync ? 'Synced ' + esc(daysAgo(AW.lastSync)) : 'Not synced yet'}</span><button class="btn sm" id="awSync">Sync now</button></div>
+    <div class="kpis tight" style="margin:10px 0 6px">
+      <div class="card kpi"><div class="v">${s.matched ?? '–'}</div><div class="l">your brands on Awin</div></div>
+      <div class="card kpi"><div class="v">${s.joined ?? 0}</div><div class="l">joined</div></div>
+      <div class="card kpi"><div class="v">${s.pending ?? 0}</div><div class="l">pending</div></div>
+      <div class="card kpi"><div class="v">${e.error ? '–' : '$' + (e.commission ?? 0).toFixed(2)}</div><div class="l">commission, 30 days</div></div>
+      <div class="card kpi"><div class="v">${e.error ? '–' : e.clicks ?? 0}</div><div class="l">clicks, 30 days</div></div>
+    </div>
+    ${toJoin.length ? `<div class="small"><b>Join next</b>${afF.secs.length ? ` in ${esc(afF.secs.join(', '))}` : ''} (on Awin, matched to brands on your site, best earnings per click first): ${toJoin.slice(0, 8).map((r) => `<a href="${esc(r.apply_url)}" target="_blank" rel="noopener">${esc(r.brand)}</a>`).join(', ')}${toJoin.length > 8 ? ` and ${toJoin.length - 8} more (tick Awin below)` : ''}</div>` : ''}
+    ${e.error ? `<div class="small" style="color:var(--fox)">${esc(e.error)}</div>` : ''}</div>`;
+}
 async function loadAffiliates() {
   const everything = await api('/api/affiliates');
   // Category (department) filter applies first: e.g. only brands that sell strollers.
@@ -1585,7 +1612,9 @@ async function loadAffiliates() {
   const netName = (k) => k === 'own' ? 'Own program / not known' : NETWORKS[k] || k;
   const list = all.filter((r) => (!afF.nets.length || afF.nets.includes(netOf(r))) && (!afF.status || r.status === afF.status));
   const link = (h, t) => `<a class="lk" href="${h}" target="_blank" rel="noopener">${t}</a>`;
+  const AW = await api('/api/awin').catch(() => null);
   $('#tab-affiliates').innerHTML = `<div class="row" style="margin-bottom:10px"><h2 style="flex:1">Affiliate programs</h2><a class="btn sm ghost" href="/api/export/affiliates.csv">Export</a></div>
+    ${awinCard(AW, all)}
     <div class="card"><b>Join these networks first.</b> <span class="muted small">Most baby brands run their program through one of them, so one approved account unlocks many brands. Many networks review your site before approving, so apply once ${esc(S.settings.site_name)} is live on its real domain with an affiliate disclosure and privacy policy.</span>
       <div class="links" style="margin-top:10px">${link('https://impact.com/partners/', 'Impact')}${link('https://www.awin.com/us/publishers', 'Awin (incl. ShareASale)')}${link('https://www.cj.com/publisher', 'CJ')}${link('https://www.avantlink.com/affiliates/', 'AvantLink')}${link('https://rakutenadvertising.com/publishers/', 'Rakuten')}${link('https://partnerize.com/', 'Partnerize')}${link('https://affiliate-program.amazon.com/', 'Amazon Associates')}</div></div>
     <div class="row" style="gap:8px;margin:4px 0 10px"><span class="small muted"><b>Category</b></span>
@@ -1599,11 +1628,14 @@ async function loadAffiliates() {
     ${afF.nets.length || afF.status || afF.secs.length ? `<div class="small muted" style="margin-bottom:8px">Showing ${list.length} of ${everything.length}${afF.secs.length ? ` · ${esc(afF.secs.join(', '))}` : ''}${afF.status ? ` · ${label(afF.status)}` : ''}${afF.nets.length ? ` · ${afF.nets.map(netName).join(', ')}` : ''}</div>` : ''}
     ${list.length ? `<div class="card tablewrap"><table><tr><th>Brand</th><th>Status</th><th>Network</th><th>Commission</th><th>Cookie</th><th></th></tr>
       ${list.map((r) => `<tr><td><a href="#" data-brandlink="${r.id}">${esc(r.brand)}</a><div class="small muted">${r.product_count} products${parse(r.sections, []).length ? ' · ' + esc(parse(r.sections, []).slice(0, 2).join(', ')) : ''}</div></td>
-        <td>${tag(r.status)}</td><td>${esc(NETWORKS[r.network] || r.network || '')}</td><td>${esc(r.commission || '')}</td><td>${esc(r.cookie_days || '')}</td>
-        <td>${r.apply_url ? `<a href="${esc(r.apply_url)}" target="_blank" rel="noopener">Apply</a>` : ''}</td></tr>`).join('')}</table></div>`
+        <td>${tag(r.status)}</td><td>${esc(NETWORKS[r.network] || r.network || '')}${awinStats(r)}</td><td>${esc(r.commission || '')}</td><td>${esc(r.cookie_days || '')}</td>
+        <td>${r.affiliate_link ? `<button class="btn sm ghost" data-copylink="${esc(r.affiliate_link)}">Copy link</button>` : r.apply_url ? `<a href="${esc(r.apply_url)}" target="_blank" rel="noopener">${r.awin_id && r.status === 'found' ? 'Join on Awin' : 'Apply'}</a>` : ''}</td></tr>`).join('')}</table></div>`
       : `<div class="empty">${all.length ? 'No programs match these filters.' : 'No programs yet. Research brands with Claude, or set a brand\'s affiliate status.'}</div>`}`;
   $$('#tab-affiliates [data-afnet]').forEach((c) => (c.onchange = () => { const k = c.dataset.afnet; afF.nets = c.checked ? [...afF.nets, k] : afF.nets.filter((x) => x !== k); loadAffiliates(); }));
   $$('#tab-affiliates [data-afstat]').forEach((b) => (b.onclick = () => { afF.status = afF.status === b.dataset.afstat ? '' : b.dataset.afstat; loadAffiliates(); }));
+  $$('#tab-affiliates [data-copylink]').forEach((b) => (b.onclick = async () => { await navigator.clipboard.writeText(b.dataset.copylink); toast('Affiliate link copied'); }));
+  $('#awSync')?.addEventListener('click', async (e) => { e.target.disabled = true; e.target.textContent = 'Syncing…';
+    try { const r = await post('/api/awin/sync'); toast(`Awin: ${r.matched} brands matched${r.changed ? `, ${r.changed} updated` : ''}`); loadAffiliates(); } catch (er) { toast(er.message); e.target.disabled = false; e.target.textContent = 'Sync now'; } });
   $('#afClear')?.addEventListener('click', () => { afF.nets = []; afF.status = ''; afF.secs = []; window._afSecOpen = false; loadAffiliates(); });
   $$('#tab-affiliates [data-afsec]').forEach((c) => (c.onchange = () => { const k = c.dataset.afsec; afF.secs = c.checked ? [...afF.secs, k] : afF.secs.filter((x) => x !== k); window._afSecOpen = true; loadAffiliates(); }));
   $('#tab-affiliates .afsec')?.addEventListener('toggle', (e) => { window._afSecOpen = e.target.open; });
@@ -1616,7 +1648,8 @@ const PT_WAIT = ['asked', 'replied', 'applied'];
 let ptQ = '';
 async function sha256hex(s) { const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)); return [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, '0')).join(''); }
 const initials = (n) => String(n || '?').split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join('');
-const daysAgo = (t) => { if (!t) return null; const h = (Date.now() - Date.parse(String(t).replace(' ', 'T') + 'Z')) / 36e5, d = Math.floor(h / 24);
+const toMs = (t) => (/T.*(Z|[+-]\d\d:?\d\d)$/.test(String(t)) ? Date.parse(t) : Date.parse(String(t).replace(' ', 'T') + 'Z'));
+const daysAgo = (t) => { if (!t) return null; const h = (Date.now() - toMs(t)) / 36e5, d = Math.floor(h / 24);
   return h < 1 ? 'just now' : h < 24 ? `${Math.floor(h)} hour${Math.floor(h) === 1 ? '' : 's'} ago` : d === 1 ? 'yesterday' : `${d} days ago`; };
 const fmtDay = (t) => t ? new Date(String(t).replace(' ', 'T') + 'Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
 const liIcon = '<svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor" aria-hidden="true"><path d="M4.98 3.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5zM3 9h4v12H3zM9 9h3.8v1.7h.1c.5-1 1.8-2 3.8-2 4 0 4.8 2.6 4.8 6V21h-4v-5.6c0-1.3 0-3.1-1.9-3.1s-2.2 1.5-2.2 3V21H9z"/></svg>';
@@ -2065,6 +2098,10 @@ function openSettings() {
     <p class="small muted">${S.claude.set ? `Saved (${esc(S.claude.hint)})${S.claude.fromEnv ? ', from the Cloudflare secret' : ''}.` : 'Not set. Research and Claude-written emails are off; emails use a plain template.'} Stored in the app's database, never in the code.</p>
     <div class="row"><input id="ckey" type="password" placeholder="sk-ant-…" style="flex:1;min-width:220px" autocomplete="off"><button class="btn" id="ckeySave">Save key</button></div>
 
+    <h3 style="margin-top:22px">Awin</h3>
+    <p class="small muted" id="awinSetNote">Paste your Awin API token (Awin → Toolbox → API credentials). The app then matches Awin programs to your brands, keeps their status in sync, and shows earnings. Stored in the app's database, not in the code.</p>
+    <div class="row"><input id="awTok" type="password" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" style="flex:1;min-width:220px" autocomplete="off"><button class="btn" id="awSave">Save token</button></div>
+
     <h3 style="margin-top:22px">Gmail</h3>
     <p class="small muted">${S.gmail.connected ? `Connected as ${esc(S.gmail.account || 'your inbox')}.` : 'Not connected. Do this once the new inbox exists (Guide → Sending).'}</p>
     ${S.gmail.fromEnv ? '' : `<div class="grid2"><div><label class="f">Google Client ID</label><input id="gid" placeholder="….apps.googleusercontent.com"></div>
@@ -2087,6 +2124,15 @@ function openSettings() {
   };
   $('#ckeySave').onclick = async () => {
     try { await post('/api/settings/claude', { key: $('#ckey').value }); await refreshSummary(); toast('Key saved'); openSettings(); } catch (e) { toast(e.message); }
+  };
+  api('/api/awin').then((AW) => { if (AW?.set && $('#awinSetNote')) $('#awinSetNote').textContent = `Connected: ${AW.account} (publisher ID ${AW.publisher}). Paste a new token to replace it, or save it empty to disconnect.`; }).catch(() => {});
+  $('#awSave').onclick = async () => {
+    try {
+      const r = await post('/api/awin/token', { token: $('#awTok').value });
+      if (r.removed) { toast('Awin disconnected'); return openSettings(); }
+      toast(`Connected to ${r.account}. Matching programs to your brands…`);
+      const sy = await post('/api/awin/sync'); toast(`Awin: ${sy.matched} of your brands are on Awin`); openSettings();
+    } catch (e) { toast(e.message); }
   };
   $('#gSave')?.addEventListener('click', async () => {
     try { await post('/api/gmail/client', { client_id: $('#gid').value, client_secret: $('#gsec').value }); await refreshSummary(); toast('Saved. Now Connect Gmail.'); openSettings(); } catch (e) { toast(e.message); }
