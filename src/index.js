@@ -479,7 +479,8 @@ async function listBrands(env, url) {
   const inList = (col, vals) => { if (vals.length) { where.push(`${col} IN (${vals.map(() => '?').join(',')})`); params.push(...vals); } };
   const status = many('status').filter((v) => BRAND_STATUSES.includes(v));
   if (status.length) inList('status', status);
-  else if (p.get('hide_done') === '1') where.push(`status NOT IN ('do_not_contact','skipped','declined')`);
+  // "Hide skipped": brands that said no stay visible, in their own "Said no" column.
+  else if (p.get('hide_done') === '1') where.push(`status != 'skipped'`);
   const secs = many('section');
   if (secs.length) { where.push(`EXISTS (SELECT 1 FROM products x WHERE x.brand_id=b.id AND x.section IN (${secs.map(() => '?').join(',')}))`); params.push(...secs); }
   inList('kind', many('kind').filter((v) => ['brand', 'store_brand'].includes(v)));

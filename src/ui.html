@@ -578,7 +578,8 @@ const BRAND_COLS = [
   { l: '3rd try sent', f: (b) => sentOn(b, 3), c: '#8fa382', k: 'brands' },
   { l: 'Form sent', f: (b) => sentOn(b, 4), c: '#7d9370', k: 'brands' },
   { l: 'Replied', s: ['replied'], c: '#c8693a', k: 'brands' },
-  { l: 'Partner', s: ['partner'], c: '#4f6b47', k: 'brands' }];
+  { l: 'Partner', s: ['partner'], c: '#4f6b47', k: 'brands' },
+  { l: 'Said no', s: ['declined', 'do_not_contact'], c: '#b5543a', k: 'brands' }];
 const PROSPECT_COLS = (k) => [{ l: 'Found', s: ['found'], c: '#d9cfb6', k }, { l: 'Ready to pitch', s: ['ready'], c: '#e9c46a', k }, { l: 'Pitched', s: ['pitched'], c: '#8fa382', k }, { l: 'Replied', s: ['replied'], c: '#c8693a', k }, { l: 'Won', s: ['won'], c: '#4f6b47', k }];
 const contactLine = (x) => x.contact_email ? `✉ ${esc(x.contact_email)}` : x.contact_url ? '🔗 Contact form' : x.researched_at ? '<span>No email published</span>' : '<span>Not researched yet</span>';
 const brandPc = (b) => `<div class="pc" data-brand="${b.id}"><div class="d">${favOf(b.domain)}<span>${esc(b.name)}</span></div>
@@ -621,7 +622,7 @@ async function loadBrands() {
     ${group('researched', 'Researched', [['1', 'Researched'], ['0', 'Not researched']])}
     ${group('kind', 'Brand type', [['brand', 'Brands'], ['store_brand', 'Store brands']])}
     <select data-f="sort">${opt('odds', 'Sort: most likely to reply', bf.sort)}${opt('score', 'Sort: most valuable', bf.sort)}${opt('products', 'Sort: most products', bf.sort)}${opt('price', 'Sort: priciest', bf.sort)}${opt('name', 'Sort: A to Z', bf.sort)}${opt('updated', 'Sort: recently changed', bf.sort)}${opt('follow_up', 'Sort: follow-up date', bf.sort)}</select>
-    <label class="chk"><input type="checkbox" data-f="hide_done" ${bf.hide_done === '1' ? 'checked' : ''}> Hide skipped & declined</label>
+    <label class="chk"><input type="checkbox" data-f="hide_done" ${bf.hide_done === '1' ? 'checked' : ''}> Hide skipped</label>
     ${active ? `<button class="btn sm ghost" data-fclear="all">Clear filters</button>` : ''}`;
   const p = new URLSearchParams(Object.entries(bf).map(([k, v]) => [k, Array.isArray(v) ? v.join(',') : v]).filter(([, v]) => v));
   const list = await api('/api/brands?' + p);
