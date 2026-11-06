@@ -246,11 +246,11 @@ THIS IS A RETRY (attempt.number). attempt.earlier_attempts lists addresses Jen a
 - Then a shorter version of the pitch: 80 to 130 words total. Same asks.
 - Subject: fresh and specific, not "Re:" and not "Following up".`;
 
-const FORM_RULES = (s, form) => `
+const FORM_RULES = (s, form, afterEmails = true) => `
 
 THIS GOES INTO A WEBSITE FORM (${form?.form_kind || 'contact'} form${form?.fields?.length ? `; fields: ${form.fields.join(', ')}` : ''}), not an email.
-Jen already emailed three addresses with no reply. Forms strip signatures, so end the message with: Jen, ${s.site_name}, ${s.site_url}${s.sender_email ? `, ${s.sender_email}` : ''}.
-- Start with "Hi," or "Hi <brand name> team,". One line on who Jen is, one line that she's tried email and wanted to try here.
+${afterEmails ? 'Jen already emailed three addresses with no reply.' : 'This brand publishes no email address, so their form is the only way in. This is the first contact: do not mention earlier emails.'} Forms strip signatures, so end the message with: Jen, ${s.site_name}, ${s.site_url}${s.sender_email ? `, ${s.sender_email}` : ''}.
+- Start with "Hi," or "Hi <brand name> team,". One line on who Jen is${afterEmails ? ", one line that she's tried email and wanted to try here" : ''}.
 - 70 to 120 words${form?.message_limit ? `, and under ${form.message_limit} characters` : ''}. Plain text.
 - subject: a short subject for the form's subject or topic field.`;
 
@@ -330,7 +330,9 @@ export async function draftEmail(env, id, body) {
   const asks = (Array.isArray(body.asks) ? body.asks : ['images', 'products']).filter((a) => ASKS[a]);
   if (!asks.length) throw fail('Pick at least one thing to ask for.');
   const s = await cfg(env);
-  const n = brand.attempt || 1, isForm = n >= FORM_ATTEMPT && !body.rereach;
+  const n = brand.attempt || 1;
+  // Form message: attempt 4, or a brand that publishes no email at all, only a contact form ("Manual contact forms" on Brands).
+  const isForm = !body.rereach && (n >= FORM_ATTEMPT || (!!body.form && !brand.contact_email));
   const facts = await brandFacts(env, brand, { link: s.link_first === '1' || !!body.rereach || n > 1 });
   // Retry context: which addresses already went unanswered, so the email can say so briefly.
   const tries = n > 1 && !body.rereach ? attemptLog(brand).map((a) => ({ to: a.to, month: a.first_sent ? new Date(a.first_sent).toLocaleString('en-US', { month: 'long' }) : null, result: a.result })) : null;
@@ -347,14 +349,14 @@ export async function draftEmail(env, id, body) {
       said_no_before: Object.keys(yes).filter((c) => brand[c] === 'declined').map((c) => NAMES[c]),
       site_traffic: s.traffic || null,
     } : null;
-    const data = await call(env, { model, max_tokens: 1200, ...noThink(model), system: WRITE_SYSTEM(s) + (isForm ? FORM_RULES(s, form) : tries ? RETRY_EMAIL_RULES : ''),
+    const data = await call(env, { model, max_tokens: 1200, ...noThink(model), system: WRITE_SYSTEM(s) + (isForm ? FORM_RULES(s, form, n >= FORM_ATTEMPT) : tries ? RETRY_EMAIL_RULES : ''),
       messages: [{ role: 'user', content: JSON.stringify({ ...facts, asks: asks.map((a) => ASKS[a]), rereach, attempt: tries ? { number: n, earlier_attempts: tries } : null,
         jens_note: String(body.note || '').slice(0, 500) || null }) }] });
     out = jsonOut(textOf(data));
     if (!out?.subject || !out?.body) throw fail('Claude returned something unexpected. Try again.', 502);
   } else {
     out = templateEmail(s, brand, facts, asks);
-    if (tries) out.body = out.body.replace(/^(Hi[^\n]*\n\n)/, `$1I reached out to ${tries.map((t) => t.to).filter(Boolean).join(' and ')} earlier and didn't hear back, so I'm trying here in case you're the right person.\n\n`);
+    if (tries && !isForm) out.body = out.body.replace(/^(Hi[^\n]*\n\n)/, `$1I reached out to ${tries.map((t) => t.to).filter(Boolean).join(' and ')} earlier and didn't hear back, so I'm trying here in case you're the right person.\n\n`);
     if (isForm) out.body = `${out.body}\n\nJen\n${s.site_name} · ${s.site_url}${s.sender_email ? ' · ' + s.sender_email : ''}`;
   }
   // One open draft per brand: replace the old draft instead of stacking them.

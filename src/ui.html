@@ -553,10 +553,22 @@ document.addEventListener('click', (e) => { const b = e.target.closest('[data-vi
 const favOf = (d) => d ? `<img class="fav" src="https://icons.duckduckgo.com/ip3/${esc(d)}.ico" alt="" loading="lazy" onerror="this.style.visibility='hidden'">` : '<span class="fav"></span>';
 const pctTag = (o) => o == null ? '' : `<span class="pct ${oddsTone(o)}" title="${esc(oddsWord(o))}">${o}%</span>`;
 function boardHtml(items, cols, card) {
-  return `<div class="board" style="--cols:${cols.length}">${cols.map((c) => { const L = items.filter((x) => c.s.includes(x.status)); return `<div class="col"><h4><i style="background:${c.c}"></i>${esc(c.l)}<span class="c">${L.length}</span></h4>
+  return `<div class="board" style="--cols:${cols.length}">${cols.map((c) => { const L = items.filter((x) => (c.f ? c.f(x) : c.s.includes(x.status))); return `<div class="col"><h4><i style="background:${c.c}"></i>${esc(c.l)}<span class="c">${L.length}</span></h4>
     ${L.slice(0, 50).map(card).join('')}${L.length > 50 ? `<div class="colmore" data-view="${c.k}:list">+${L.length - 50} more in List</div>` : ''}${L.length ? '' : '<div class="colmore" style="padding:20px 0;cursor:default">Empty</div>'}</div>`; }).join('')}</div>`;
 }
-const BRAND_COLS = [{ l: 'Research', s: ['research'], c: '#d9cfb6', k: 'brands' }, { l: 'Ready to email', s: ['ready'], c: '#e9c46a', k: 'brands' }, { l: 'Contacted', s: ['contacted'], c: '#8fa382', k: 'brands' }, { l: 'Replied', s: ['replied'], c: '#c8693a', k: 'brands' }, { l: 'Partner', s: ['partner'], c: '#4f6b47', k: 'brands' }];
+// A brand with no published email, only a contact form: it goes in "Manual contact forms" below the board instead of a column.
+const isManualForm = (b) => ['research', 'ready'].includes(b.status) && !b.contact_email && !!b.contact_url && (!!b.researched_at || (b.attempt || 1) >= 4);
+const sentOn = (b, n) => b.status === 'contacted' && (n === 4 ? (b.attempt || 1) >= 4 : (b.attempt || 1) === n);
+// Phases: research → email → up to three tries at different addresses → their form → replied → partner.
+const BRAND_COLS = [
+  { l: 'Research', f: (b) => b.status === 'research' && !isManualForm(b), c: '#d9cfb6', k: 'brands' },
+  { l: 'Ready to email', f: (b) => b.status === 'ready' && !isManualForm(b), c: '#e9c46a', k: 'brands' },
+  { l: '1st try sent', f: (b) => sentOn(b, 1), c: '#b7c4a8', k: 'brands' },
+  { l: '2nd try sent', f: (b) => sentOn(b, 2), c: '#a3b494', k: 'brands' },
+  { l: '3rd try sent', f: (b) => sentOn(b, 3), c: '#8fa382', k: 'brands' },
+  { l: 'Form sent', f: (b) => sentOn(b, 4), c: '#7d9370', k: 'brands' },
+  { l: 'Replied', s: ['replied'], c: '#c8693a', k: 'brands' },
+  { l: 'Partner', s: ['partner'], c: '#4f6b47', k: 'brands' }];
 const PROSPECT_COLS = (k) => [{ l: 'Found', s: ['found'], c: '#d9cfb6', k }, { l: 'Ready to pitch', s: ['ready'], c: '#e9c46a', k }, { l: 'Pitched', s: ['pitched'], c: '#8fa382', k }, { l: 'Replied', s: ['replied'], c: '#c8693a', k }, { l: 'Won', s: ['won'], c: '#4f6b47', k }];
 const contactLine = (x) => x.contact_email ? `✉ ${esc(x.contact_email)}` : x.contact_url ? '🔗 Contact form' : x.researched_at ? '<span>No email published</span>' : '<span>Not researched yet</span>';
 const brandPc = (b) => `<div class="pc" data-brand="${b.id}"><div class="d">${favOf(b.domain)}<span>${esc(b.name)}</span></div>
@@ -578,7 +590,7 @@ async function loadBrands() {
         <button class="btn sm ghost" onclick="checkAllEmails(this)" title="Checks every saved email that hasn't been checked: on the cited page, domain takes mail, matches the brand">Check emails</button>
         <button class="btn sm ghost" onclick="addBrandDlg()">Add a brand</button>
         <a class="btn sm ghost" href="/api/export/brands.csv">Export</a></div>
-      <div class="filters" id="bFilters"></div><div id="bCount" class="small muted" style="margin-bottom:8px"></div><div id="bResearch"></div><div id="bList"></div>`;
+      <div class="filters" id="bFilters"></div><div id="bCount" class="small muted" style="margin-bottom:8px"></div><div id="bResearch"></div><div id="bList"></div><div id="bForms"></div>`;
   }
   // Checkbox filters: tick any number in a group; brands matching any ticked box in that group show.
   const group = (k, title, items) => {
@@ -603,7 +615,8 @@ async function loadBrands() {
     ${active ? `<button class="btn sm ghost" data-fclear="all">Clear filters</button>` : ''}`;
   const p = new URLSearchParams(Object.entries(bf).map(([k, v]) => [k, Array.isArray(v) ? v.join(',') : v]).filter(([, v]) => v));
   const list = await api('/api/brands?' + p);
-  $('#bCount').textContent = `${list.length} brand${list.length === 1 ? '' : 's'}`;
+  const nForms = list.filter(isManualForm).length;
+  $('#bCount').innerHTML = `${list.length} brand${list.length === 1 ? '' : 's'}${nForms ? ` · <a href="#" onclick="$('#bForms').scrollIntoView({behavior:'smooth'});return false"><b>${nForms} manual contact form${nForms === 1 ? '' : 's'} ↓</b></a>` : ''}`;
   // Research bar: research the brands in this filtered list, in the order shown.
   const todo = list.filter(needsResearch);
   $('#bResearch').innerHTML = S.claude.set && todo.length ? `<div class="card research-bar"><div class="row" style="gap:8px">
@@ -619,6 +632,7 @@ async function loadBrands() {
   }));
   $('#bView').innerHTML = viewSeg('brands');
   $('#bList').innerHTML = !list.length ? '<div class="empty">No brands match.</div>' : viewOf('brands') === 'board' ? boardHtml(list, BRAND_COLS, brandPc) : list.map(brandCard).join('');
+  renderManualForms(list);
 }
 let searchT;
 document.addEventListener('input', (e) => {
@@ -898,8 +912,8 @@ function draftCard(m) {
   if (m.kind === 'form') {
     const f = (parse(m.brand_research, {}) || {}).form || {};
     return `<div class="card" data-msg="${m.id}" data-dm="1" data-form="1">
-    <div class="row"><b style="flex:1;cursor:pointer" data-brandlink="${m.brand_id}">${esc(m.brand)}</b>${tag('declined', 'Attempt 4: website form')}</div>
-    <div class="small muted" style="margin-top:4px">Three emails got no reply, so this one goes through their form. ${m.contact_url ? `<a href="${esc(m.contact_url)}" target="_blank" rel="noopener"><b>Open their form</b></a>` : ''}${f.fields?.length ? ` · it asks for ${esc(f.fields.join(', '))}` : ''}${f.message_limit ? ` · message up to ${esc(f.message_limit)} characters` : ''}</div>
+    <div class="row"><b style="flex:1;cursor:pointer" data-brandlink="${m.brand_id}">${esc(m.brand)}</b>${tag('declined', (m.attempt || 1) >= 4 ? 'Attempt 4: website form' : 'Website form')}</div>
+    <div class="small muted" style="margin-top:4px">${(m.attempt || 1) >= 4 ? 'Three emails got no reply, so this one goes through their form.' : 'They publish no email, so this goes through their form.'} ${m.contact_url ? `<a href="${esc(m.contact_url)}" target="_blank" rel="noopener"><b>Open their form</b></a>` : ''}${f.fields?.length ? ` · it asks for ${esc(f.fields.join(', '))}` : ''}${f.message_limit ? ` · message up to ${esc(f.message_limit)} characters` : ''}</div>
     <input class="m-to" type="hidden" value="">
     <label class="f">Subject or topic field</label><input class="m-subj" value="${esc(m.subject)}" style="width:100%">
     <label class="f">Message</label><textarea class="m-body" style="min-height:150px">${esc(m.body)}</textarea>
@@ -938,6 +952,26 @@ function draftCard(m) {
     ${blocked ? `<div class="small muted" style="margin-top:6px">Sending is off: ${esc(blocked)}</div>` : ''}
   </div>`;
 }
+// Brands with no published email, only a website form: open the form, have Claude write the message, paste it in, mark it done.
+async function renderManualForms(list) {
+  const forms = list.filter(isManualForm);
+  const box = $('#bForms'); if (!box) return;
+  if (!forms.length) { box.innerHTML = ''; return; }
+  const drafts = (await api('/api/queue')).filter((m) => m.kind === 'form');
+  const draftOf = Object.fromEntries(drafts.map((m) => [m.brand_id, m]));
+  box.innerHTML = `<div class="sec" style="margin-top:22px;scroll-margin-top:80px"><h3 style="flex:1">Manual contact forms (${forms.length})</h3></div>
+    <p class="small muted" style="margin-top:-4px">These brands don't publish an email, only a form on their site. Open the form, write the message, paste it in, then press <b>I filled it in</b>. It then counts as a first try, so replies and follow-up timing work the same way.</p>
+    ${forms.map((b) => draftOf[b.id] ? draftCard(draftOf[b.id]) : `<div class="card" style="padding:12px 14px"><div class="row" style="gap:8px">
+      <div style="flex:1;min-width:180px"><b style="cursor:pointer" data-brandlink="${b.id}">${esc(b.name)}</b>${attemptTag(b)}
+        <div class="small muted">${pctTag(b.reply_odds)} ${b.product_count} product${b.product_count === 1 ? '' : 's'}${parse(b.sections, []).length ? ' · ' + esc(parse(b.sections, []).slice(0, 2).join(', ')) : ''}</div></div>
+      <a class="btn sm" href="${esc(b.contact_url)}" target="_blank" rel="noopener">Open form ↗</a>
+      ${S.claude.set ? `<button class="btn sm primary" data-formgen="${b.id}">Write form message</button>` : ''}</div></div>`).join('')}`;
+  box.querySelectorAll('[data-formgen]').forEach((btn) => (btn.onclick = async () => {
+    btn.disabled = true; btn.textContent = 'Writing…';
+    try { await post(`/api/brands/${btn.dataset.formgen}/draft`, { asks: ['images', 'products'], form: true }); await refreshSummary(); renderManualForms(list); }
+    catch (e) { toast(e.message); btn.disabled = false; btn.textContent = 'Write form message'; }
+  }));
+}
 async function loadDrafts() {
   await refreshSummary();
   const list = await api('/api/queue');
@@ -958,7 +992,7 @@ document.addEventListener('click', async (e) => {
   const pl = e.target.closest('[data-prospectlink]'); if (pl) { openProspect(Number(pl.dataset.prospectlink)); return; }
   const b = e.target.closest('[data-mact]'); if (!b) return;
   const card = b.closest('[data-msg]'), id = card.dataset.msg, act = b.dataset.mact;
-  const after = async () => { await refreshSummary(); if (currentProspect && dlg.open) openProspect(currentProspect); else if (currentBrand && dlg.open) openBrand(currentBrand); else loadDrafts(); };
+  const after = async () => { await refreshSummary(); if (currentProspect && dlg.open) openProspect(currentProspect); else if (currentBrand && dlg.open) openBrand(currentBrand); else if (!$('#tab-brands').hidden) loadBrands(); else loadDrafts(); };
   try {
     if (act === 'copy' && card.dataset.dm) { await navigator.clipboard.writeText($('.m-body', card).value); toast(card.dataset.form ? 'Copied. Paste it into their form.' : 'Copied. Paste it into the DM.'); return; }
     if (act === 'copy') {
