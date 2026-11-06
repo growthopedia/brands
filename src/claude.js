@@ -332,7 +332,7 @@ export async function draftEmail(env, id, body) {
   const s = await cfg(env);
   const n = brand.attempt || 1;
   // Form message: attempt 4, or a brand that publishes no email at all, only a contact form ("Manual contact forms" on Brands).
-  const isForm = !body.rereach && (n >= FORM_ATTEMPT || (!!body.form && !brand.contact_email));
+  const isForm = !body.rereach && !brand.contact_email && (n >= FORM_ATTEMPT || !!body.form);
   const facts = await brandFacts(env, brand, { link: s.link_first === '1' || !!body.rereach || n > 1 });
   // Retry context: which addresses already went unanswered, so the email can say so briefly.
   const tries = n > 1 && !body.rereach ? attemptLog(brand).map((a) => ({ to: a.to, month: a.first_sent ? new Date(a.first_sent).toLocaleString('en-US', { month: 'long' }) : null, result: a.result })) : null;

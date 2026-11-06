@@ -84,6 +84,14 @@ label.f+input,label.f+select,label.f+textarea{width:100%}
 .research-bar{background:var(--mist);border-color:var(--sun)}
 .progress.busy i{width:35%;animation:busy 1.4s ease-in-out infinite}
 @keyframes busy{0%{margin-left:-35%}100%{margin-left:100%}}
+.ptgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px}.ptgrid .card{margin:0}
+.ptphotobtn{border:0;background:none;padding:0;cursor:pointer;flex:none}
+.ptphoto{width:64px;height:64px;border-radius:50%;object-fit:cover;display:block;border:2px solid var(--line);background:var(--mist)}
+.ptinit{display:grid;place-items:center;font-family:Fraunces,serif;font-size:22px;color:var(--rain);background:var(--sky)}
+.ptli{color:#0a66c2;display:inline-flex}.ptcontact{margin:12px 0 4px;display:flex;flex-direction:column;gap:4px}.ptcontact svg{color:#0a66c2;vertical-align:-2px}
+.ptlists{display:grid;grid-template-columns:1fr 1fr;gap:10px 14px;margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}
+.ptlist ul{margin:4px 0 0;padding-left:18px}.ptlist li{margin:3px 0;font-size:14px}
+@media (max-width:640px){.ptgrid{grid-template-columns:1fr}}
 .sizechip{border:1.5px solid var(--line);background:var(--cloud);border-radius:99px;padding:6px 12px;font:600 13px/1 var(--body);cursor:pointer;color:var(--ink)}
 .sizechip.on{border-color:var(--rain);background:var(--rain-soft)}
 .sizechip span{color:var(--soft);font-weight:500;margin-left:4px}
@@ -255,6 +263,7 @@ dialog::backdrop{background:rgba(47,59,44,.4)}
     <button data-tab="affiliates" class="more-sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>Affiliates</button>
     <button data-tab="creators"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="m16 10 5-3v10l-5-3"/></svg>Creators</button>
     <button data-tab="grow" class="more-sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></svg>Grow</button>
+    <button data-tab="partners" class="more"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="11" r="2.5"/><path d="M5.5 17c.8-1.8 2-2.6 3.5-2.6s2.7.8 3.5 2.6M15 10h4M15 14h3"/></svg>Partners</button>
     <button data-tab="permissions" class="more"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 6 9 17l-5-5"/></svg>Approvals</button>
     <button data-tab="rereach" class="more"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>Re-reach</button>
     <button data-tab="stats" class="more"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>Results</button>
@@ -274,6 +283,7 @@ dialog::backdrop{background:rgba(47,59,44,.4)}
   <section id="tab-links" hidden></section>
   <section id="tab-creators" hidden></section>
   <section id="tab-grow" hidden></section>
+  <section id="tab-partners" hidden></section>
   <section id="tab-permissions" hidden></section>
   <section id="tab-rereach" hidden></section>
   <section id="tab-stats" hidden></section>
@@ -356,7 +366,7 @@ const ASK_NAME = { images: 'Image permission', affiliate: 'Affiliate program', s
 const NETWORKS = { impact: 'Impact', awin: 'Awin / ShareASale', cj: 'CJ', avantlink: 'AvantLink', rakuten: 'Rakuten', partnerize: 'Partnerize', amazon: 'Amazon only', in_house: 'In-house', other: 'Other' };
 
 // ---------- tabs ----------
-const LOADERS = { today: loadToday, brands: loadBrands, drafts: loadDrafts, replies: loadReplies, affiliates: loadAffiliates, creators: loadCreators, grow: loadGrow, permissions: loadPermissions, rereach: loadRereach, stats: loadStats, guide: loadGuide };
+const LOADERS = { today: loadToday, brands: loadBrands, drafts: loadDrafts, replies: loadReplies, affiliates: loadAffiliates, creators: loadCreators, grow: loadGrow, partners: loadPartners, permissions: loadPermissions, rereach: loadRereach, stats: loadStats, guide: loadGuide };
 function showTab(name) {
   if (!LOADERS[name]) name = 'today';
   $$('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.tab === name));
@@ -367,7 +377,7 @@ function showTab(name) {
 }
 $('#tabs').addEventListener('click', (e) => { const b = e.target.closest('button[data-tab]'); if (b) showTab(b.dataset.tab); });
 function moreMenu() {
-  openDlg('More', [['grow', 'Grow @thecribpicks'], ['affiliates', 'Affiliate programs'], ['permissions', 'Approvals'], ['rereach', 'Re-reach'], ['stats', 'Results'], ['guide', 'Guide']]
+  openDlg('More', [['grow', 'Grow @thecribpicks'], ['affiliates', 'Affiliate programs'], ['partners', 'Partners'], ['permissions', 'Approvals'], ['rereach', 'Re-reach'], ['stats', 'Results'], ['guide', 'Guide']]
     .map(([t, l]) => `<button class="btn ghost" style="width:100%;justify-content:center;margin-bottom:10px" onclick="dlg.close();showTab('${t}')">${l}</button>`).join(''));
 }
 
@@ -961,11 +971,27 @@ async function renderManualForms(list) {
   const draftOf = Object.fromEntries(drafts.map((m) => [m.brand_id, m]));
   box.innerHTML = `<div class="sec" style="margin-top:22px;scroll-margin-top:80px"><h3 style="flex:1">Manual contact forms (${forms.length})</h3></div>
     <p class="small muted" style="margin-top:-4px">These brands don't publish an email, only a form on their site. Open the form, write the message, paste it in, then press <b>I filled it in</b>. It then counts as a first try, so replies and follow-up timing work the same way.</p>
-    ${forms.map((b) => draftOf[b.id] ? draftCard(draftOf[b.id]) : `<div class="card" style="padding:12px 14px"><div class="row" style="gap:8px">
+    ${forms.map((b) => (draftOf[b.id] ? draftCard(draftOf[b.id]) : `<div class="card" style="padding:12px 14px"><div class="row" style="gap:8px">
       <div style="flex:1;min-width:180px"><b style="cursor:pointer" data-brandlink="${b.id}">${esc(b.name)}</b>${attemptTag(b)}
         <div class="small muted">${pctTag(b.reply_odds)} ${b.product_count} product${b.product_count === 1 ? '' : 's'}${parse(b.sections, []).length ? ' · ' + esc(parse(b.sections, []).slice(0, 2).join(', ')) : ''}</div></div>
       <a class="btn sm" href="${esc(b.contact_url)}" target="_blank" rel="noopener">Open form ↗</a>
-      ${S.claude.set ? `<button class="btn sm primary" data-formgen="${b.id}">Write form message</button>` : ''}</div></div>`).join('')}`;
+      ${S.claude.set ? `<button class="btn sm primary" data-formgen="${b.id}">Write form message</button>` : ''}</div></div>`)
+      + `<div class="row foundmail" style="gap:6px;margin:-6px 0 14px;padding:0 4px"><span class="small muted">Found an email for ${esc(b.name)}?</span>
+          <input type="email" data-femail="${b.id}" placeholder="name@${esc(b.domain || 'brand.com')}" style="flex:1;min-width:170px;padding:6px 10px">
+          <button class="btn sm" data-fuse="${b.id}">Use this email</button></div>`).join('')}`;
+  // An email found next to the form: save it, move the brand to Ready to email, and write the email draft.
+  box.querySelectorAll('[data-fuse]').forEach((btn) => (btn.onclick = async () => {
+    const id = btn.dataset.fuse, email = $(`[data-femail="${id}"]`, box).value.trim();
+    if (!email) return toast('Type or paste the email first.');
+    btn.disabled = true; btn.textContent = 'Saving…';
+    try {
+      const r = await post(`/api/brands/${id}`, { contact_email: email });
+      if (r.check?.status === 'bad') toast(`Saved, but check it: ${r.check.note}`);
+      btn.textContent = 'Writing email…'; await post(`/api/brands/${id}/draft`, { asks: ['images', 'products'] });
+      toast('Moved to Ready to email. The email is in Drafts.');
+      await refreshSummary(); loadBrands();
+    } catch (e) { toast(e.message); btn.disabled = false; btn.textContent = 'Use this email'; }
+  }));
   box.querySelectorAll('[data-formgen]').forEach((btn) => (btn.onclick = async () => {
     btn.disabled = true; btn.textContent = 'Writing…';
     try { await post(`/api/brands/${btn.dataset.formgen}/draft`, { asks: ['images', 'products'], form: true }); await refreshSummary(); renderManualForms(list); }
@@ -1559,6 +1585,128 @@ async function loadAffiliates() {
 }
 
 // ---------- PERMISSIONS ----------
+// ---------- PARTNERS: a contact card per brand you have a relationship with ----------
+const PT_YES = { image_status: ['approved'], affiliate_status: ['approved'], sample_status: ['approved', 'received'], collab_status: ['approved'], feed_status: ['approved'] };
+const PT_WAIT = ['asked', 'replied', 'applied'];
+let ptQ = '';
+async function sha256hex(s) { const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)); return [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, '0')).join(''); }
+const initials = (n) => String(n || '?').split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join('');
+const daysAgo = (t) => { if (!t) return null; const h = (Date.now() - Date.parse(String(t).replace(' ', 'T') + 'Z')) / 36e5, d = Math.floor(h / 24);
+  return h < 1 ? 'just now' : h < 24 ? `${Math.floor(h)} hour${Math.floor(h) === 1 ? '' : 's'} ago` : d === 1 ? 'yesterday' : `${d} days ago`; };
+const fmtDay = (t) => t ? new Date(String(t).replace(' ', 'T') + 'Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
+const liIcon = '<svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor" aria-hidden="true"><path d="M4.98 3.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5zM3 9h4v12H3zM9 9h3.8v1.7h.1c.5-1 1.8-2 3.8-2 4 0 4.8 2.6 4.8 6V21h-4v-5.6c0-1.3 0-3.1-1.9-3.1s-2.2 1.5-2.2 3V21H9z"/></svg>';
+
+async function loadPartners() {
+  const list = await api('/api/partners');
+  const q = ptQ.toLowerCase();
+  const shown = list.filter((b) => !q || [b.name, b.contact_name, b.contact_email].some((x) => String(x || '').toLowerCase().includes(q)));
+  $('#tab-partners').innerHTML = `<div class="row" style="margin-bottom:10px"><h2 style="flex:1">Partners</h2>
+      ${S.claude.set && list.length ? `<button class="btn sm" id="ptFindAll" title="Looks up LinkedIn profiles and people for cards that haven't been checked yet">Find LinkedIns for all</button>` : ''}</div>
+    <p class="small muted" style="margin-top:-4px">Every brand that replied, said yes, or offered something. Newest conversation first.</p>
+    ${list.length > 6 ? `<input type="search" id="ptQ" placeholder="Search partners" value="${esc(ptQ)}" style="width:100%;margin-bottom:12px">` : ''}
+    <div class="ptgrid">${shown.map(partnerCard).join('') || `<div class="empty">${list.length ? 'No partners match.' : 'No partners yet. Brands show up here once they reply, say yes to something, or offer something.'}</div>`}</div>`;
+  $('#ptQ')?.addEventListener('input', (e) => { ptQ = e.target.value; clearTimeout(window._ptT); window._ptT = setTimeout(loadPartners, 250); });
+  // Photos: saved photo, else Gravatar for their email, else initials.
+  for (const img of $$('#tab-partners img[data-grav]')) img.src = `https://gravatar.com/avatar/${await sha256hex(img.dataset.grav.trim().toLowerCase())}?s=160&d=404`;
+  $('#ptFindAll')?.addEventListener('click', async (e) => {
+    const todo = list.filter((b) => !b.partner_checked_at);
+    if (!todo.length) return toast('Every card has been checked. Use "Find LinkedIn" on a card to check again.');
+    if (!confirm(`Look up LinkedIn profiles for ${todo.length} partner${todo.length === 1 ? '' : 's'}? About 20 seconds each.`)) return;
+    e.target.disabled = true;
+    for (let i = 0; i < todo.length; i++) { e.target.textContent = `Looking up ${i + 1} of ${todo.length}…`; try { await post(`/api/brands/${todo[i].id}/people`); } catch (er) { if (/key|credit/i.test(er.message)) { toast(er.message); break; } } }
+    loadPartners();
+  });
+  $$('#tab-partners [data-ptfind]').forEach((b) => (b.onclick = async () => {
+    b.disabled = true; b.textContent = 'Searching… (about 20 seconds)';
+    try { await post(`/api/brands/${b.dataset.ptfind}/people`); toast('Updated'); loadPartners(); } catch (e) { toast(e.message); b.disabled = false; b.textContent = 'Find LinkedIn'; }
+  }));
+  $$('#tab-partners [data-ptphoto]').forEach((b) => (b.onclick = () => photoDlg(Number(b.dataset.ptphoto))));
+  $$('#tab-partners [data-ptedit]').forEach((b) => (b.onclick = () => editContactDlg(list.find((x) => x.id == b.dataset.ptedit))));
+}
+
+function partnerCard(b) {
+  const extra = parse(b.partner_people, {}) || {};
+  const asks = Object.keys(ASK_LABEL);
+  const yes = asks.filter((k) => PT_YES[k].includes(b[k]));
+  const offered = asks.filter((k) => b[k] === 'offered');
+  const waiting = asks.filter((k) => PT_WAIT.includes(b[k]));
+  const notAsked = asks.filter((k) => ['none', 'found'].includes(b[k]));
+  const declined = asks.filter((k) => b[k] === 'declined');
+  const last = [b.last_sent, b.last_reply].filter(Boolean).sort().pop();
+  const lastWho = last && last === b.last_reply ? 'they replied' : last ? 'you emailed' : '';
+  const name = b.contact_name || b.name;
+  const photo = b.contact_photo ? `<img class="ptphoto" src="${b.contact_photo}" alt="">`
+    : b.contact_email ? `<img class="ptphoto" data-grav="${esc(b.contact_email)}" alt="" onerror="this.outerHTML='<div class=&quot;ptphoto ptinit&quot;>${esc(initials(name))}</div>'">`
+    : `<div class="ptphoto ptinit">${esc(initials(name))}</div>`;
+  const bl = (title, items, tone, empty) => `<div class="ptlist"><div class="small"><b>${title}</b></div>${items.length ? `<ul>${items.map((k) => `<li>${tone ? tag(tone, ASK_LABEL[k]) : esc(ASK_LABEL[k])}${b[k] && !['none', 'found', 'approved', 'offered'].includes(b[k]) ? ` <span class="muted small">(${esc(label(b[k]))})</span>` : ''}</li>`).join('')}</ul>` : `<div class="small muted">${empty}</div>`}</div>`;
+  return `<div class="card ptcard">
+    <div class="row" style="gap:12px;align-items:flex-start">
+      <button class="ptphotobtn" data-ptphoto="${b.id}" title="Add or change photo">${photo}</button>
+      <div style="flex:1;min-width:0">
+        <div class="row" style="gap:6px"><b style="font-size:16px">${esc(name)}</b>${b.contact_linkedin ? `<a class="ptli" href="${esc(b.contact_linkedin)}" target="_blank" rel="noopener" title="LinkedIn">${liIcon}</a>` : ''}</div>
+        ${b.contact_role ? `<div class="small">${esc(b.contact_role)}</div>` : ''}
+        <div class="small muted" style="cursor:pointer" data-brandlink="${b.id}">${favOf(b.domain)} ${esc(b.name)} ${tag(b.status)}</div>
+      </div>
+    </div>
+    <div class="ptcontact small">
+      ${b.contact_email ? `<div>✉ <a href="mailto:${esc(b.contact_email)}">${esc(b.contact_email)}</a></div>` : ''}
+      ${b.contact_phone ? `<div>☎ <a href="tel:${esc(b.contact_phone.replace(/[^\d+]/g, ''))}">${esc(b.contact_phone)}</a></div>` : ''}
+      ${b.contact_linkedin ? `<div>${liIcon} <a href="${esc(b.contact_linkedin)}" target="_blank" rel="noopener">LinkedIn profile</a></div>` : ''}
+      ${extra.company_linkedin ? `<div>${liIcon} <a href="${esc(extra.company_linkedin)}" target="_blank" rel="noopener">${esc(b.name)} on LinkedIn</a></div>` : ''}
+      <div class="muted">🕑 ${last ? `Last contact ${esc(fmtDay(last))} (${esc(daysAgo(last))}) · ${lastWho}` : 'No emails yet'}</div>
+    </div>
+    <div class="ptlists">
+      ${bl('Approved for', yes, 'approved', 'Nothing yet')}
+      ${bl('They suggested', offered, 'ready', 'Nothing offered yet')}
+      ${waiting.length ? bl('Waiting on', waiting, '', '') : ''}
+      ${bl("Haven't asked", notAsked, '', 'You\'ve asked for everything')}
+      ${declined.length ? bl('Said no', declined, 'declined', '') : ''}
+    </div>
+    ${extra.people?.length ? `<details class="small" style="margin-top:8px"><summary>Other people at ${esc(b.name)} (${extra.people.length})</summary>
+      ${extra.people.map((p) => `<div style="margin:6px 0">${p.linkedin ? `<a href="${esc(p.linkedin)}" target="_blank" rel="noopener"><b>${esc(p.name)}</b></a>` : `<b>${esc(p.name)}</b>`}${p.title ? ` · ${esc(p.title)}` : ''}${p.why ? `<div class="muted">${esc(p.why)}</div>` : ''}</div>`).join('')}</details>` : ''}
+    <div class="row" style="gap:6px;margin-top:10px">
+      ${S.claude.set ? `<button class="btn sm" data-ptfind="${b.id}">${b.partner_checked_at ? 'Find LinkedIn again' : 'Find LinkedIn'}</button>` : ''}
+      <button class="btn sm ghost" data-ptedit="${b.id}">Edit contact</button>
+      <button class="btn sm ghost" data-brandlink="${b.id}">Open brand</button>
+    </div>
+    ${b.partner_checked_at ? `<div class="small muted" style="margin-top:6px">LinkedIn checked ${esc(fmtDay(b.partner_checked_at))}. Check the profile is the right person before reaching out.</div>` : ''}
+  </div>`;
+}
+
+function photoDlg(id) {
+  openDlg('Add a photo', `<p class="small muted">LinkedIn doesn't let apps pull profile photos. On their LinkedIn profile, right-click (or long-press) their photo, choose <b>Copy image address</b>, and paste it here. Or upload a picture. It's saved in the app, so it won't disappear if the link changes.</p>
+    <label class="f">Image link</label><input id="phUrl" placeholder="https://media.licdn.com/..." style="width:100%">
+    <label class="f">Or upload</label><input type="file" id="phFile" accept="image/*">
+    <div class="row" style="margin-top:12px"><button class="btn primary" id="phGo">Save photo</button><button class="btn ghost" id="phClear">Remove photo</button></div>`);
+  const done = () => { closeDlg(); loadPartners(); };
+  $('#phGo').onclick = async () => {
+    try {
+      const f = $('#phFile').files[0];
+      if (f) { if (f.size > 400000) return toast('Use an image under 400 KB.'); const data = await new Promise((r) => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(f); }); await post(`/api/brands/${id}/photo`, { data }); }
+      else await post(`/api/brands/${id}/photo`, { url: $('#phUrl').value.trim() });
+      toast('Photo saved'); done();
+    } catch (e) { toast(e.message); }
+  };
+  $('#phClear').onclick = async () => { await post(`/api/brands/${id}/photo`, { clear: true }); done(); };
+}
+
+function editContactDlg(b) {
+  openDlg(`Contact at ${b.name}`, `
+    <label class="f">Name</label><input id="ecName" value="${esc(b.contact_name || '')}" style="width:100%">
+    <label class="f">Title</label><input id="ecRole" value="${esc(b.contact_role || '')}" style="width:100%">
+    <label class="f">Email</label><input id="ecEmail" value="${esc(b.contact_email || '')}" style="width:100%">
+    <label class="f">Phone</label><input id="ecPhone" value="${esc(b.contact_phone || '')}" style="width:100%">
+    <label class="f">LinkedIn profile link</label><input id="ecLi" value="${esc(b.contact_linkedin || '')}" placeholder="https://www.linkedin.com/in/..." style="width:100%">
+    <div class="small muted" style="margin-top:10px"><b>What they've offered or approved</b>: change these on the Approvals tab or the brand card. Set an ask to <b>offered</b> when they suggest it themselves.</div>
+    <div class="row" style="margin-top:12px"><button class="btn primary" id="ecGo">Save</button></div>`);
+  $('#ecGo').onclick = async () => {
+    const li = $('#ecLi').value.trim();
+    if (li && !/^https:\/\/([a-z]{2,3}\.)?(www\.)?linkedin\.com\//i.test(li)) return toast('That doesn\'t look like a LinkedIn link.');
+    try { await post(`/api/brands/${b.id}`, { contact_name: $('#ecName').value, contact_role: $('#ecRole').value, contact_email: $('#ecEmail').value, contact_phone: $('#ecPhone').value, contact_linkedin: li }); toast('Saved'); closeDlg(); loadPartners(); }
+    catch (e) { toast(e.message); }
+  };
+}
+
 // ---------- APPROVALS (every ask) + image permission log ----------
 const ASK_OF = Object.fromEntries(Object.entries(ASK_KEY).map(([k, v]) => [v, k]));
 const ASK_YES = { image_status: ['approved'], affiliate_status: ['approved'], sample_status: ['approved', 'received'], collab_status: ['approved'], feed_status: ['approved'] };

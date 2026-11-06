@@ -27,6 +27,7 @@ import * as L from './links.js';
 import * as C from './creators.js';
 import * as G from './social.js';
 import { advanceAttempts } from './attempts.js';
+import * as P from './partners.js';
 import { verifyEmail, verifyManual } from './verify.js';
 
 let schemaReady = false;
@@ -46,6 +47,9 @@ async function ensureSchema(env) {
   if (!cols.includes('attempt')) await env.DB.prepare(`ALTER TABLE brands ADD COLUMN attempt INTEGER NOT NULL DEFAULT 1`).run();
   if (!cols.includes('attempts_log')) await env.DB.prepare(`ALTER TABLE brands ADD COLUMN attempts_log TEXT`).run();
   if (!cols.includes('leads')) await env.DB.prepare(`ALTER TABLE brands ADD COLUMN leads TEXT`).run();
+  // Partners tab: contact card details.
+  for (const c of ['contact_phone', 'contact_linkedin', 'contact_photo', 'partner_people', 'partner_checked_at'])
+    if (!cols.includes(c)) await env.DB.prepare(`ALTER TABLE brands ADD COLUMN ${c} TEXT`).run();
   const mcols = (await all(env, `PRAGMA table_info(messages)`)).map((x) => x.name);
   if (!mcols.includes('attempt')) await env.DB.prepare(`ALTER TABLE messages ADD COLUMN attempt INTEGER NOT NULL DEFAULT 1`).run();
   for (const t of ['brands', 'link_prospects']) {
@@ -126,11 +130,12 @@ function authorized(request, env) {
 
 const BRAND_STATUSES = ['research', 'ready', 'contacted', 'replied', 'partner', 'declined', 'skipped', 'do_not_contact'];
 const ASK_STATES = {
-  image_status: ['none', 'asked', 'replied', 'approved', 'declined'],
-  affiliate_status: ['none', 'found', 'applied', 'approved', 'declined', 'no_program'],
-  sample_status: ['none', 'asked', 'approved', 'declined', 'received'],
-  collab_status: ['none', 'asked', 'approved', 'declined'],
-  feed_status: ['none', 'asked', 'approved', 'declined'],
+  // 'offered' = the brand suggested it themselves (e.g. "we also have an affiliate program").
+  image_status: ['none', 'asked', 'replied', 'offered', 'approved', 'declined'],
+  affiliate_status: ['none', 'found', 'offered', 'applied', 'approved', 'declined', 'no_program'],
+  sample_status: ['none', 'asked', 'offered', 'approved', 'declined', 'received'],
+  collab_status: ['none', 'asked', 'offered', 'approved', 'declined'],
+  feed_status: ['none', 'asked', 'offered', 'approved', 'declined'],
 };
 const MANIFEST = {
   name: 'Cribpicks Brands', short_name: 'Brands', start_url: '/', display: 'standalone',
@@ -175,6 +180,7 @@ export default {
       if (path === '/api/affiliates') return json(await affiliates(env));
       if (path === '/api/permissions') return json(await listPermissions(env));
       if (path === '/api/approvals') return json(await approvals(env));
+      if (path === '/api/partners') return json(await P.listPartners(env));
       if (path === '/api/permissions/extract' && method === 'POST') return json(await extractPermission(env, await body()));
       if (path === '/api/stats') return json(await stats(env));
       if (path === '/api/check-replies' && method === 'POST') return json(await checkReplies(env));
@@ -245,6 +251,8 @@ export default {
         if (!sub && method === 'GET') return json(await getBrand(env, id));
         if (!sub && method === 'POST') return json(await updateBrand(env, id, await body()));
         if (sub === 'research' && method === 'POST') return json(await researchBrand(env, id));
+        if (sub === 'people' && method === 'POST') return json(await P.findPeople(env, id));
+        if (sub === 'photo' && method === 'POST') return json(await P.savePhoto(env, id, await body()));
         if (sub === 'draft' && method === 'POST') return json(await draftEmail(env, id, await body()));
         if (sub === 'contacts' && method === 'POST') return json(await addContact(env, id, await body()));
         if (sub === 'activity' && method === 'POST') return json(await addActivity(env, id, await body()));
@@ -510,7 +518,7 @@ async function getBrand(env, id) {
   return { brand, products, contacts, messages, replies, permissions, activity };
 }
 
-const TEXT_FIELDS = ['name', 'website', 'contact_name', 'contact_email', 'contact_role', 'contact_url', 'instagram', 'affiliate_network',
+const TEXT_FIELDS = ['name', 'website', 'contact_name', 'contact_email', 'contact_role', 'contact_url', 'contact_phone', 'contact_linkedin', 'instagram', 'affiliate_network',
   'affiliate_url', 'commission', 'cookie_days', 'affiliate_notes', 'notes', 'follow_up_note', 'kind'];
 async function updateBrand(env, id, body) {
   const brand = await first(env, `SELECT * FROM brands WHERE id=?`, id);
@@ -550,6 +558,8 @@ async function updateBrand(env, id, body) {
     await env.DB.prepare(`UPDATE brands SET email_check=? WHERE id=?`).bind(v ? JSON.stringify(v) : null, id).run();
   }
   if (body.contact_email) {
+    // Found an email for a form-only brand: drop the unsent form message; it gets a normal email instead.
+    await env.DB.prepare(`UPDATE messages SET status='skipped' WHERE brand_id=? AND status='draft' AND kind='form'`).bind(id).run();
     await env.DB.prepare(`UPDATE messages SET to_email=? WHERE brand_id=? AND status='draft' AND (to_email IS NULL OR to_email='')`).bind(body.contact_email.toLowerCase(), id).run();
     if (brand.status === 'research') await env.DB.prepare(`UPDATE brands SET status='ready' WHERE id=?`).bind(id).run();
   }
