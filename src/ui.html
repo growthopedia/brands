@@ -78,6 +78,12 @@ label.f+input,label.f+select,label.f+textarea{width:100%}
 .fol{font-size:14px}.fol b{font:600 17px/1 var(--head);color:var(--ink)}.fol.unknown{color:var(--soft);font-size:13px}
 .sizechips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
 .appr{width:100%;border-collapse:collapse;font-size:14px}.appr th{text-align:left;font-weight:600;padding:10px 12px;border-bottom:1px solid var(--line);white-space:nowrap}.appr td{padding:8px 12px;border-bottom:1px solid var(--line)}.appr select{padding:4px 6px;font-size:13px}.appr select.ask-yes{background:#e3ecd9;border-color:var(--rain)}.appr select.ask-no{background:#f6e3d8}
+#runBar{position:fixed;z-index:60;left:50%;transform:translateX(-50%);bottom:20px;width:min(560px,calc(100% - 32px));background:var(--cloud);border:1.5px solid var(--rain);border-radius:16px;padding:12px 14px;box-shadow:0 10px 30px rgba(47,59,44,.18)}
+#runBar .progress{margin-top:8px}
+@media (max-width:760px){#runBar{bottom:calc(76px + env(safe-area-inset-bottom))}}
+.research-bar{background:var(--mist);border-color:var(--sun)}
+.progress.busy i{width:35%;animation:busy 1.4s ease-in-out infinite}
+@keyframes busy{0%{margin-left:-35%}100%{margin-left:100%}}
 .sizechip{border:1.5px solid var(--line);background:var(--cloud);border-radius:99px;padding:6px 12px;font:600 13px/1 var(--body);cursor:pointer;color:var(--ink)}
 .sizechip.on{border-color:var(--rain);background:var(--rain-soft)}
 .sizechip span{color:var(--soft);font-weight:500;margin-left:4px}
@@ -247,8 +253,7 @@ dialog::backdrop{background:rgba(47,59,44,.4)}
     <button data-tab="drafts"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/></svg>Drafts<span class="count" id="dCount" hidden></span></button>
     <button data-tab="replies"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Replies<span class="count" id="rCount" hidden></span></button>
     <button data-tab="affiliates" class="more-sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>Affiliates</button>
-    <button data-tab="links"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2l2.4 4.9 5.4.8-3.9 3.8.9 5.4L12 14.4 7.2 17l.9-5.4L4.2 7.7l5.4-.8z"/><path d="M8 21h8"/></svg>Links</button>
-    <button data-tab="creators" class="more-sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="m16 10 5-3v10l-5-3"/></svg>Creators</button>
+    <button data-tab="creators"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="m16 10 5-3v10l-5-3"/></svg>Creators</button>
     <button data-tab="grow" class="more-sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></svg>Grow</button>
     <button data-tab="permissions" class="more"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 6 9 17l-5-5"/></svg>Approvals</button>
     <button data-tab="rereach" class="more"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>Re-reach</button>
@@ -351,7 +356,7 @@ const ASK_NAME = { images: 'Image permission', affiliate: 'Affiliate program', s
 const NETWORKS = { impact: 'Impact', awin: 'Awin / ShareASale', cj: 'CJ', avantlink: 'AvantLink', rakuten: 'Rakuten', partnerize: 'Partnerize', amazon: 'Amazon only', in_house: 'In-house', other: 'Other' };
 
 // ---------- tabs ----------
-const LOADERS = { today: loadToday, brands: loadBrands, drafts: loadDrafts, replies: loadReplies, affiliates: loadAffiliates, links: loadLinks, creators: loadCreators, grow: loadGrow, permissions: loadPermissions, rereach: loadRereach, stats: loadStats, guide: loadGuide };
+const LOADERS = { today: loadToday, brands: loadBrands, drafts: loadDrafts, replies: loadReplies, affiliates: loadAffiliates, creators: loadCreators, grow: loadGrow, permissions: loadPermissions, rereach: loadRereach, stats: loadStats, guide: loadGuide };
 function showTab(name) {
   if (!LOADERS[name]) name = 'today';
   $$('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.tab === name));
@@ -362,7 +367,7 @@ function showTab(name) {
 }
 $('#tabs').addEventListener('click', (e) => { const b = e.target.closest('button[data-tab]'); if (b) showTab(b.dataset.tab); });
 function moreMenu() {
-  openDlg('More', [['creators', 'Creators'], ['grow', 'Grow @thecribpicks'], ['affiliates', 'Affiliate programs'], ['permissions', 'Approvals'], ['rereach', 'Re-reach'], ['stats', 'Results'], ['guide', 'Guide']]
+  openDlg('More', [['grow', 'Grow @thecribpicks'], ['affiliates', 'Affiliate programs'], ['permissions', 'Approvals'], ['rereach', 'Re-reach'], ['stats', 'Results'], ['guide', 'Guide']]
     .map(([t, l]) => `<button class="btn ghost" style="width:100%;justify-content:center;margin-bottom:10px" onclick="dlg.close();showTab('${t}')">${l}</button>`).join(''));
 }
 
@@ -460,7 +465,7 @@ async function loadToday() {
     ${t.followups.length ? `<div class="sec"><h3>Follow-ups due</h3></div>${t.followups.map((b) => `<div class="card brand" data-brand="${b.id}"><div class="body">
       <div class="name">${esc(b.name)}</div><div class="small ${b.follow_up_on <= t.date ? 'muted' : ''}">Due ${esc(b.follow_up_on)}${b.follow_up_note ? ': ' + esc(b.follow_up_note) : ''}</div>
       <div class="row" style="margin-top:6px">${tag(b.status)}${b.contact_email ? `<span class="small muted">${esc(b.contact_email)}</span>` : ''}</div></div></div>`).join('')}` : ''}
-    ${t.linkFollowups.length ? `<div class="sec"><h3>Link follow-ups due</h3></div>${t.linkFollowups.map((p) => `<div class="card brand" data-prospect="${p.id}"><div class="body">
+    ${t.linkFollowups.length ? `<div class="sec"><h3>Creator follow-ups due</h3></div>${t.linkFollowups.map((p) => `<div class="card brand" data-prospect="${p.id}"><div class="body">
       <div class="name">${esc(p.name)}</div><div class="small muted">Due ${esc(p.follow_up_on)}</div><div class="row" style="margin-top:6px">${tag(p.status)}</div></div></div>`).join('')}` : ''}
     <div class="sec"><h3 style="flex:1">Next up</h3>${S.claude.set ? `<button class="btn sm" onclick="researchBatch(this, 10)">Research the next 10</button>` : ''}</div>
     <p class="small muted" style="margin-top:-4px">Brands most likely to answer that you haven't written to yet. The % is an estimate: smaller brands, partnerships emails and brands with affiliate programs reply more. Research sharpens it.</p>
@@ -472,17 +477,40 @@ const kpi = (v, l, tab, state) => `<div class="card kpi" ${tab ? `style="cursor:
 async function researchBatch(btn, n) {
   const list = await api(`/api/research/next?n=${n}`);
   if (!list.length) return toast('Every brand has been researched.');
-  btn.disabled = true;
-  const prog = $('#batchProg');
-  let found = 0;
-  for (let i = 0; i < list.length; i++) {
-    prog.innerHTML = `<div class="card small">Researching <b>${esc(list[i].name)}</b> (${i + 1} of ${list.length}). Keep this tab open.<div class="progress"><i style="width:${Math.round((i / list.length) * 100)}%"></i></div></div>`;
-    try { const r = await post(`/api/brands/${list[i].id}/research`); if (r.foundEmail) found++; }
-    catch (e) { toast(`${list[i].name}: ${e.message}`); if (/key|Settings/.test(e.message)) break; }
+  runResearch(list);
+}
+
+// Research runner: works through a list one brand at a time and shows a bar at the bottom of the screen.
+// It keeps going while you use other tabs; only closing or reloading the page stops it.
+const RUN = { list: [], i: 0, found: 0, failed: 0, stop: false, active: false, current: '' };
+function needsResearch(b) { return !b.researched_at || (b.status === 'research' && (b.attempt || 1) > 1 && !b.contact_email); }
+function drawRun() {
+  let bar = $('#runBar');
+  if (!bar) { bar = document.createElement('div'); bar.id = 'runBar'; document.body.appendChild(bar); }
+  if (!RUN.active && !RUN.done) { bar.hidden = true; return; }
+  bar.hidden = false;
+  const n = RUN.list.length, pct = Math.round((RUN.i / Math.max(1, n)) * 100);
+  const left = Math.max(0, n - RUN.i), mins = Math.max(1, Math.round((left * 35) / 60));
+  bar.innerHTML = RUN.active
+    ? `<div class="row" style="gap:10px"><div style="flex:1;min-width:0"><div class="small"><b>Researching ${esc(RUN.current)}</b> · ${RUN.i + 1} of ${n} · ${RUN.found} email${RUN.found === 1 ? '' : 's'} found</div>
+        <div class="small muted">About ${mins} min left · other tabs are fine, keep this page open</div></div>
+        <button class="btn sm ghost" id="runStop">${RUN.stop ? 'Stopping…' : 'Stop'}</button></div><div class="progress"><i style="width:${pct}%"></i></div>`
+    : `<div class="row" style="gap:10px"><div style="flex:1" class="small"><b>Research done.</b> Found emails for ${RUN.found} of ${RUN.i}${RUN.failed ? ` · ${RUN.failed} had an error` : ''}. Brands with an email moved to Ready to email.</div>
+        <button class="btn sm" id="runClose">Close</button></div>`;
+  $('#runStop')?.addEventListener('click', () => { RUN.stop = true; drawRun(); });
+  $('#runClose')?.addEventListener('click', () => { RUN.done = false; drawRun(); });
+}
+async function runResearch(list) {
+  if (RUN.active) return toast('Research is already running. Stop it first or wait for it to finish.');
+  Object.assign(RUN, { list, i: 0, found: 0, failed: 0, stop: false, active: true, done: false });
+  for (; RUN.i < list.length && !RUN.stop; RUN.i++) {
+    RUN.current = list[RUN.i].name; drawRun();
+    try { const r = await post(`/api/brands/${list[RUN.i].id}/research`); if (r.foundEmail || r.form) RUN.found++; }
+    catch (e) { RUN.failed++; if (/key|Settings|credit|rate/i.test(e.message)) { toast(e.message); break; } }
   }
-  prog.innerHTML = ''; btn.disabled = false;
-  toast(`Done. Found emails for ${found} of ${list.length}.`);
-  if (!$('#tab-today').hidden) loadToday(); else loadBrands();
+  RUN.active = false; RUN.done = true; drawRun();
+  await refreshSummary();
+  if (!$('#tab-today').hidden) loadToday(); else if (!$('#tab-brands').hidden) loadBrands();
 }
 
 // ---------- BRANDS ----------
@@ -541,7 +569,7 @@ async function loadBrands() {
         <button class="btn sm ghost" onclick="checkAllEmails(this)" title="Checks every saved email that hasn't been checked: on the cited page, domain takes mail, matches the brand">Check emails</button>
         <button class="btn sm ghost" onclick="addBrandDlg()">Add a brand</button>
         <a class="btn sm ghost" href="/api/export/brands.csv">Export</a></div>
-      <div class="filters" id="bFilters"></div><div id="bCount" class="small muted" style="margin-bottom:8px"></div><div id="bList"></div>`;
+      <div class="filters" id="bFilters"></div><div id="bCount" class="small muted" style="margin-bottom:8px"></div><div id="bResearch"></div><div id="bList"></div>`;
   }
   // Checkbox filters: tick any number in a group; brands matching any ticked box in that group show.
   const group = (k, title, items) => {
@@ -567,6 +595,19 @@ async function loadBrands() {
   const p = new URLSearchParams(Object.entries(bf).map(([k, v]) => [k, Array.isArray(v) ? v.join(',') : v]).filter(([, v]) => v));
   const list = await api('/api/brands?' + p);
   $('#bCount').textContent = `${list.length} brand${list.length === 1 ? '' : 's'}`;
+  // Research bar: research the brands in this filtered list, in the order shown.
+  const todo = list.filter(needsResearch);
+  $('#bResearch').innerHTML = S.claude.set && todo.length ? `<div class="card research-bar"><div class="row" style="gap:8px">
+      <div style="flex:1;min-width:180px"><b>${todo.length} ${todo.length === 1 ? 'brand needs' : 'brands need'} research</b>
+        <div class="small muted">About 30 seconds each, in the order shown${list.length !== todo.length || bf.q || ['status', 'section', 'odds'].some((k) => bf[k].length) ? ', for the brands matching your filters' : ''}.</div></div>
+      ${[5, 10].filter((n) => n < todo.length).map((n) => `<button class="btn sm" data-rsn="${n}">Research ${n}</button>`).join('')}
+      <button class="btn sm primary" data-rsn="${todo.length}">Research ${todo.length > 10 ? 'all ' + todo.length : todo.length === 1 ? 'it' : 'all ' + todo.length}</button>
+    </div></div>` : '';
+  $$('#bResearch [data-rsn]').forEach((b) => (b.onclick = () => {
+    const n = Number(b.dataset.rsn);
+    if (n > 25 && !confirm(`Research ${n} brands? That takes about ${Math.round((n * 35) / 60)} minutes and uses Claude for each one.`)) return;
+    runResearch(todo.slice(0, n));
+  }));
   $('#bView').innerHTML = viewSeg('brands');
   $('#bList').innerHTML = !list.length ? '<div class="empty">No brands match.</div>' : viewOf('brands') === 'board' ? boardHtml(list, BRAND_COLS, brandPc) : list.map(brandCard).join('');
 }
@@ -772,8 +813,9 @@ async function openBrand(id, opts = {}) {
   }));
   $('#resBtn')?.addEventListener('click', async (e) => {
     e.target.disabled = true; e.target.textContent = 'Searching the web… (about 30 seconds)';
+    e.target.insertAdjacentHTML('afterend', '<div class="progress busy" id="resBusy" style="flex-basis:100%"><i></i></div>');
     try { const r = await post(`/api/brands/${id}/research`); toast(r.foundEmail ? `Found ${r.foundEmail}` : 'No published email. Check the notes and links.'); openBrand(id); }
-    catch (err) { toast(err.message); e.target.disabled = false; e.target.textContent = 'Research with Claude'; }
+    catch (err) { toast(err.message); e.target.disabled = false; e.target.textContent = 'Research with Claude'; $('#resBusy')?.remove(); }
   });
   $('#ncAdd').onclick = async () => {
     try { await post(`/api/brands/${id}/contacts`, { name: $('#ncName').value, email: $('#ncEmail').value, role: $('#ncRole').value }); openBrand(id); } catch (e) { toast(e.message); }

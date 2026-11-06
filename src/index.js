@@ -298,7 +298,6 @@ export default {
       await queueFollowups(env).catch((e) => console.error('follow-ups failed', e));
       await advanceAttempts(env).catch((e) => console.error('attempts failed', e));
       await L.queuePitchFollowups(env).catch((e) => console.error('pitch follow-ups failed', e));
-      await L.checkDueLinks(env).catch((e) => console.error('link check failed', e));
     })());
   },
 
@@ -314,7 +313,7 @@ async function summary(env) {
   const [brands, products, drafts, unread, g, key, m] = await Promise.all([
     first(env, `SELECT COUNT(*) n FROM brands`),
     first(env, `SELECT COUNT(*) n FROM products`),
-    first(env, `SELECT COUNT(*) n FROM messages WHERE status='draft'`),
+    first(env, `SELECT COUNT(*) n FROM messages m WHERE m.status='draft' AND (m.brand_id > 0 OR EXISTS (SELECT 1 FROM link_prospects lp WHERE lp.id=m.prospect_id AND lp.kind='creator'))`),
     first(env, `SELECT COUNT(*) n FROM replies WHERE handled=0 AND kind IN ('reply','optout')`),
     gmailCreds(env), claudeKey(env), getMeta(env, ['last_reply_check', 'last_import']),
   ]);
@@ -333,17 +332,17 @@ async function today(env) {
   const [replies, followups, nextUp, drafts, unmatched, linkFollowups] = await Promise.all([
     all(env, `SELECT r.id, r.brand_id, r.prospect_id, r.from_email, r.subject, r.snippet, r.kind, r.received_at, COALESCE(b.name, lp.name, lp.domain) brand, lp.kind lp_kind
         FROM replies r LEFT JOIN brands b ON b.id=r.brand_id LEFT JOIN link_prospects lp ON lp.id=r.prospect_id
-        WHERE r.handled=0 AND r.kind IN ('reply','optout') AND (r.brand_id IS NOT NULL OR r.prospect_id IS NOT NULL)
+        WHERE r.handled=0 AND r.kind IN ('reply','optout') AND (r.brand_id IS NOT NULL OR lp.kind='creator')
         ORDER BY r.received_at DESC LIMIT 20`),
     all(env, `SELECT id, name, status, follow_up_on, follow_up_note, contact_email, contact_url FROM brands
         WHERE follow_up_on IS NOT NULL AND follow_up_on <= ? AND status NOT IN ('do_not_contact','declined','partner') ORDER BY follow_up_on LIMIT 25`, d),
     all(env, `SELECT id, name, score, reply_odds, product_count, max_price, domain, sections, status, contact_email, contact_url, kind, researched_at FROM brands b
         WHERE status IN ('research','ready') AND NOT EXISTS (SELECT 1 FROM messages m WHERE m.brand_id=b.id AND m.status!='skipped')
         ORDER BY reply_odds DESC, score DESC LIMIT 10`),
-    first(env, `SELECT COUNT(*) n FROM messages WHERE status='draft'`),
+    first(env, `SELECT COUNT(*) n FROM messages m WHERE m.status='draft' AND (m.brand_id > 0 OR EXISTS (SELECT 1 FROM link_prospects lp WHERE lp.id=m.prospect_id AND lp.kind='creator'))`),
     first(env, `SELECT COUNT(*) n FROM replies WHERE brand_id IS NULL AND prospect_id IS NULL AND kind IN ('reply','optout')`),
     all(env, `SELECT id, COALESCE(name, domain) name, status, follow_up_on, contact_email FROM link_prospects
-        WHERE follow_up_on IS NOT NULL AND follow_up_on <= ? AND status NOT IN ('do_not_contact','won','lost','skipped') ORDER BY follow_up_on LIMIT 25`, d),
+        WHERE kind='creator' AND follow_up_on IS NOT NULL AND follow_up_on <= ? AND status NOT IN ('do_not_contact','won','lost','skipped') ORDER BY follow_up_on LIMIT 25`, d),
   ]);
   return { date: d, replies, followups, linkFollowups, nextUp, drafts: drafts.n, unmatched: unmatched.n };
 }
@@ -576,7 +575,9 @@ async function addBrand(env, body) {
 
 async function researchCandidates(env, url) {
   const n = Math.min(25, Number(url.searchParams.get('n')) || 10);
-  return all(env, `SELECT id, name FROM brands WHERE researched_at IS NULL AND status NOT IN ('do_not_contact','skipped','declined','partner')
+  // Never researched, or back at research for another attempt with no address yet.
+  return all(env, `SELECT id, name FROM brands WHERE (researched_at IS NULL OR (status='research' AND attempt > 1 AND contact_email IS NULL))
+    AND status NOT IN ('do_not_contact','skipped','declined','partner')
     ORDER BY reply_odds DESC, score DESC LIMIT ?`, n);
 }
 
@@ -759,7 +760,7 @@ async function queue(env) {
   return all(env, `SELECT m.*, COALESCE(b.name, lp.name, lp.domain) brand, COALESCE(b.contact_name, lp.contact_name) contact_name,
       COALESCE(b.contact_url, lp.contact_url) contact_url, b.research brand_research, COALESCE(b.domain, lp.domain) domain, COALESCE(b.contact_email, lp.contact_email) owner_email, COALESCE(b.email_check, lp.email_check) email_check, b.product_count, b.sections, b.kind brand_kind, lp.tactic, lp.kind lp_kind, lp.platform, lp.handle, lp.url lp_url
     FROM messages m LEFT JOIN brands b ON b.id=m.brand_id AND m.brand_id > 0 LEFT JOIN link_prospects lp ON lp.id=m.prospect_id
-    WHERE m.status='draft' AND (b.id IS NOT NULL OR lp.id IS NOT NULL)
+    WHERE m.status='draft' AND (b.id IS NOT NULL OR lp.kind='creator')
     ORDER BY m.kind='reply' DESC, m.kind='followup' DESC, m.prospect_id IS NOT NULL, COALESCE(b.reply_odds, lp.odds, 0) DESC, m.id`);
 }
 async function updateMessage(env, id, body) {

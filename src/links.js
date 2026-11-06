@@ -531,7 +531,7 @@ export async function logProspectReply(env, id, body) {
 export async function queuePitchFollowups(env) {
   const due = await all(env, `SELECT p.id, p.contact_name, p.contact_email, m.subject, m.to_email FROM link_prospects p
       JOIN messages m ON m.prospect_id=p.id AND m.kind='initial' AND m.status IN ('sent','sent_manual')
-     WHERE p.status='pitched' AND m.sent_at <= datetime('now','-7 days')
+     WHERE p.kind='creator' AND p.status='pitched' AND m.sent_at <= datetime('now','-7 days')
        AND NOT EXISTS (SELECT 1 FROM messages f WHERE f.prospect_id=p.id AND f.kind='followup')
        AND NOT EXISTS (SELECT 1 FROM replies r WHERE r.prospect_id=p.id AND r.kind IN ('reply','optout')) LIMIT 20`);
   for (const p of due) {

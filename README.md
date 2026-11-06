@@ -1,7 +1,7 @@
 # Cribpicks brand outreach
 
 Asks baby gear brands for **image permission, affiliate access, samples, TikTok features and spec data**, and keeps the
-written record of every yes. Also a **backlink builder** (finds link prospects, writes pitches, checks won links stay live) and **creator outreach** (finds small creators who posted about products on the site, writes emails/DMs, and logs their permission to be featured), plus a **Grow** tab for @thecribpicks (who to follow, post ideas, playbook). One card per brand on the site, ranked by how likely each brand is to reply, then by value.
+written record of every yes. Also **creator outreach** (finds small creators who posted about products on the site, writes emails/DMs, and logs their permission to be featured), plus a **Grow** tab for @thecribpicks (who to follow, post ideas, playbook). One card per brand on the site, ranked by how likely each brand is to reply, then by value.
 
 - **App:** https://brands.cribpicks.com (behind Cloudflare Access)
 - **How to use it:** the **Guide** tab in the app (`src/guide.html`)
@@ -12,7 +12,7 @@ written record of every yes. Also a **backlink builder** (finds link prospects, 
 | `src/index.js` | The Worker: pages, brand data, product import, hourly job, incoming email |
 | `src/claude.js` | Claude: web research for contacts and affiliate programs, writing and rewriting emails, answering replies |
 | `src/gmail.js` | Sending through Gmail, reply checking, opt-outs and bounces |
-| `src/links.js` | Backlinks: prospect finder (Claude + web search), contact research, pitches, list import, live-link checker |
+| `src/links.js` | Shared prospect code used by creators (the backlink tab was removed; backlinks live in a separate tool) |
 | `src/creators.js` | Creators: finder matched to site products, contact research, email/DM writer, permission log, export for the site |
 | `src/social.js` | Grow: accounts for @thecribpicks to follow and comment on, daily list, post ideas from the catalog |
 | `src/inbound.js` | Mail arriving through Cloudflare Email Routing: filed on the right brand, copy forwarded to you |
