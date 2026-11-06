@@ -94,6 +94,7 @@ label.f+input,label.f+select,label.f+textarea{width:100%}
 @media (max-width:640px){.ptgrid{grid-template-columns:1fr}}
 .afstat{text-align:left;cursor:pointer;font:inherit;color:inherit}.afstat.on{border-color:var(--rain);box-shadow:inset 0 0 0 1.5px var(--rain);background:var(--mist)}
 .afnets{margin-bottom:12px}
+.aflinks{white-space:nowrap}.aflinks a,.aflinks button{display:block;margin:0 0 4px}.aflinks .muted{color:var(--soft)}
 .sizechip{border:1.5px solid var(--line);background:var(--cloud);border-radius:99px;padding:6px 12px;font:600 13px/1 var(--body);cursor:pointer;color:var(--ink)}
 .sizechip.on{border-color:var(--rain);background:var(--rain-soft)}
 .sizechip span{color:var(--soft);font-weight:500;margin-left:4px}
@@ -1579,6 +1580,18 @@ async function featuresDlg() {
 const afF = { nets: [], status: '', secs: [] };
 const netOf = (r) => r.network || 'own';
 // Awin on the dashboard: account, what's matched to your brands, and the last 30 days of earnings.
+// Where to go for each program: the brand's page on the network, the program's own page, and your tracking link once approved.
+const NETWORK_HOME = { awin: 'https://ui.awin.com/', impact: 'https://app.impact.com/', cj: 'https://members.cj.com/', avantlink: 'https://classic.avantlink.com/affiliate/',
+  rakuten: 'https://rakutenadvertising.com/login/', partnerize: 'https://console.partnerize.com/', amazon: 'https://affiliate-program.amazon.com/' };
+function affLinks(r) {
+  const out = [];
+  const awinPage = r.awin_id ? `https://ui.awin.com/merchant-profile/${r.awin_id}` : null;
+  if (awinPage) out.push(`<a href="${awinPage}" target="_blank" rel="noopener">${r.status === 'found' ? 'Join on Awin' : 'Awin page'} ↗</a>`);
+  if (r.apply_url && r.apply_url !== awinPage) out.push(`<a href="${esc(r.apply_url)}" target="_blank" rel="noopener">${r.status === 'found' && !awinPage ? 'Apply' : 'Program page'} ↗</a>`);
+  if (r.affiliate_link) out.push(`<button class="btn sm ghost" data-copylink="${esc(r.affiliate_link)}">Copy my link</button>`);
+  if (r.domain) out.push(`<a href="https://${esc(r.domain)}" target="_blank" rel="noopener" class="muted">Website ↗</a>`);
+  return out.join('');
+}
 function awinStats(r) {
   const k = parse(r.awin_kpi, null); if (!k) return '';
   const bits = [k.epc != null && `EPC $${Number(k.epc).toFixed(2)}`, k.conversion != null && `${k.conversion}% convert`, k.approval != null && `${Math.round(k.approval)}% approved`].filter(Boolean);
@@ -1628,8 +1641,8 @@ async function loadAffiliates() {
     ${afF.nets.length || afF.status || afF.secs.length ? `<div class="small muted" style="margin-bottom:8px">Showing ${list.length} of ${everything.length}${afF.secs.length ? ` · ${esc(afF.secs.join(', '))}` : ''}${afF.status ? ` · ${label(afF.status)}` : ''}${afF.nets.length ? ` · ${afF.nets.map(netName).join(', ')}` : ''}</div>` : ''}
     ${list.length ? `<div class="card tablewrap"><table><tr><th>Brand</th><th>Status</th><th>Network</th><th>Commission</th><th>Cookie</th><th></th></tr>
       ${list.map((r) => `<tr><td><a href="#" data-brandlink="${r.id}">${esc(r.brand)}</a><div class="small muted">${r.product_count} products${parse(r.sections, []).length ? ' · ' + esc(parse(r.sections, []).slice(0, 2).join(', ')) : ''}</div></td>
-        <td>${tag(r.status)}</td><td>${esc(NETWORKS[r.network] || r.network || '')}${awinStats(r)}</td><td>${esc(r.commission || '')}</td><td>${esc(r.cookie_days || '')}</td>
-        <td>${r.affiliate_link ? `<button class="btn sm ghost" data-copylink="${esc(r.affiliate_link)}">Copy link</button>` : r.apply_url ? `<a href="${esc(r.apply_url)}" target="_blank" rel="noopener">${r.awin_id && r.status === 'found' ? 'Join on Awin' : 'Apply'}</a>` : ''}</td></tr>`).join('')}</table></div>`
+        <td>${tag(r.status)}</td><td>${NETWORK_HOME[r.network] ? `<a href="${NETWORK_HOME[r.network]}" target="_blank" rel="noopener" title="Open your ${esc(NETWORKS[r.network])} account">${esc(NETWORKS[r.network])} ↗</a>` : esc(NETWORKS[r.network] || r.network || '')}${awinStats(r)}</td><td>${esc(r.commission || '')}</td><td>${esc(r.cookie_days || '')}</td>
+        <td class="aflinks">${affLinks(r)}</td></tr>`).join('')}</table></div>`
       : `<div class="empty">${all.length ? 'No programs match these filters.' : 'No programs yet. Research brands with Claude, or set a brand\'s affiliate status.'}</div>`}`;
   $$('#tab-affiliates [data-afnet]').forEach((c) => (c.onchange = () => { const k = c.dataset.afnet; afF.nets = c.checked ? [...afF.nets, k] : afF.nets.filter((x) => x !== k); loadAffiliates(); }));
   $$('#tab-affiliates [data-afstat]').forEach((b) => (b.onclick = () => { afF.status = afF.status === b.dataset.afstat ? '' : b.dataset.afstat; loadAffiliates(); }));
