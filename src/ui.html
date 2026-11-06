@@ -467,13 +467,21 @@ async function loadToday() {
       <div class="row" style="margin-top:6px">${tag(b.status)}${b.contact_email ? `<span class="small muted">${esc(b.contact_email)}</span>` : ''}</div></div></div>`).join('')}` : ''}
     ${t.linkFollowups.length ? `<div class="sec"><h3>Creator follow-ups due</h3></div>${t.linkFollowups.map((p) => `<div class="card brand" data-prospect="${p.id}"><div class="body">
       <div class="name">${esc(p.name)}</div><div class="small muted">Due ${esc(p.follow_up_on)}</div><div class="row" style="margin-top:6px">${tag(p.status)}</div></div></div>`).join('')}` : ''}
-    <div class="sec"><h3 style="flex:1">Next up</h3>${S.claude.set ? `<button class="btn sm" onclick="researchBatch(this, 10)">Research the next 10</button>` : ''}</div>
+    <div class="sec"><h3 style="flex:1">Next up</h3>${S.claude.set ? `<button class="btn sm" onclick="researchBatch(this, 10)">Research the next 10</button><button class="btn sm primary" onclick="researchAll(this)">Research all</button>` : ''}</div>
     <p class="small muted" style="margin-top:-4px">Brands most likely to answer that you haven't written to yet. The % is an estimate: smaller brands, partnerships emails and brands with affiliate programs reply more. Research sharpens it.</p>
     <div id="batchProg"></div>
     ${t.nextUp.map(brandCard).join('') || '<div class="empty">Every brand has a draft or has been contacted.</div>'}`;
 }
 const kpi = (v, l, tab, state) => `<div class="card kpi" ${tab ? `style="cursor:pointer" onclick="${state ? `replyState='${state}';` : ''}showTab('${tab}')"` : ''}><div class="v">${v}</div><div class="l">${esc(l)}</div></div>`;
 
+// Every brand that still needs research (never researched, or back for another attempt), most likely to reply first.
+async function researchAll(btn) {
+  if (RUN.active) return toast('Research is already running.');
+  const list = await api('/api/research/next?all=1');
+  if (!list.length) return toast('Every brand has been researched.');
+  if (!confirm(`Research all ${list.length} brands? About 30 seconds each, so roughly ${list.length > 120 ? Math.round((list.length * 35) / 3600 * 10) / 10 + ' hours' : Math.round((list.length * 35) / 60) + ' minutes'}. Keep this page open; you can stop it any time.`)) return;
+  runResearch(list);
+}
 async function researchBatch(btn, n) {
   const list = await api(`/api/research/next?n=${n}`);
   if (!list.length) return toast('Every brand has been researched.');
@@ -566,6 +574,7 @@ async function loadBrands() {
   const opt = (v, txt, cur) => `<option value="${esc(v)}" ${v === cur ? 'selected' : ''}>${esc(txt)}</option>`;
   if (!$('#bFilters')) {
     el.innerHTML = `<div class="row" style="margin-bottom:10px"><h2 style="flex:1">Brands</h2><span id="bView"></span><span class="spacer"></span>
+        ${S.claude.set ? `<button class="btn sm primary" onclick="researchAll(this)" title="Researches every brand that hasn't been researched yet, most likely to reply first">Research all</button>` : ''}
         <button class="btn sm ghost" onclick="checkAllEmails(this)" title="Checks every saved email that hasn't been checked: on the cited page, domain takes mail, matches the brand">Check emails</button>
         <button class="btn sm ghost" onclick="addBrandDlg()">Add a brand</button>
         <a class="btn sm ghost" href="/api/export/brands.csv">Export</a></div>
@@ -599,7 +608,7 @@ async function loadBrands() {
   const todo = list.filter(needsResearch);
   $('#bResearch').innerHTML = S.claude.set && todo.length ? `<div class="card research-bar"><div class="row" style="gap:8px">
       <div style="flex:1;min-width:180px"><b>${todo.length} ${todo.length === 1 ? 'brand needs' : 'brands need'} research</b>
-        <div class="small muted">About 30 seconds each, in the order shown${list.length !== todo.length || bf.q || ['status', 'section', 'odds'].some((k) => bf[k].length) ? ', for the brands matching your filters' : ''}.</div></div>
+        <div class="small muted">About 30 seconds each, in the order shown${bf.q || ['status', 'section', 'contact', 'odds', 'image_status', 'affiliate_status', 'kind', 'researched'].some((k) => bf[k].length) ? ', for the brands matching your filters' : ''}.</div></div>
       ${[5, 10].filter((n) => n < todo.length).map((n) => `<button class="btn sm" data-rsn="${n}">Research ${n}</button>`).join('')}
       <button class="btn sm primary" data-rsn="${todo.length}">Research ${todo.length > 10 ? 'all ' + todo.length : todo.length === 1 ? 'it' : 'all ' + todo.length}</button>
     </div></div>` : '';

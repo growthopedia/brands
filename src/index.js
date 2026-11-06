@@ -574,7 +574,7 @@ async function addBrand(env, body) {
 }
 
 async function researchCandidates(env, url) {
-  const n = Math.min(25, Number(url.searchParams.get('n')) || 10);
+  const n = url.searchParams.get('all') === '1' ? 5000 : Math.min(25, Number(url.searchParams.get('n')) || 10);
   // Never researched, or back at research for another attempt with no address yet.
   return all(env, `SELECT id, name FROM brands WHERE (researched_at IS NULL OR (status='research' AND attempt > 1 AND contact_email IS NULL))
     AND status NOT IN ('do_not_contact','skipped','declined','partner')
