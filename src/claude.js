@@ -9,6 +9,9 @@ export const RESEARCH_MODEL = (env) => env.RESEARCH_MODEL || 'claude-sonnet-5-5'
 // Sonnet/Opus think before answering by default, which can use up a short reply.
 export const noThink = (model) => (/sonnet|opus/.test(model) ? { thinking: { type: 'between_tools' } } : {});
 
+// Prompt caching: mark the fixed instructions so repeat calls read them from cache (billed at a fraction of normal input).
+const cached = (s) => (typeof s === 'string' && s ? [{ type: 'text', text: s, cache_control: { type: 'ephemeral' } }] : s);
+
 export async function claudeKey(env) {
   const fromEnv = (env.ANTHROPIC_API_KEY || '').trim();
   if (fromEnv) return fromEnv;
@@ -35,7 +38,7 @@ export async function call(env, payload) {
   const r = await fetch(API, {
     method: 'POST',
     headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-    body: JSON.stringify(payload),
+    body: JSON.stringify({ ...payload, system: cached(payload.system) }),
   });
   const data = await r.json().catch(() => ({}));
   if (r.status === 401) throw fail('Claude rejected the API key. Update it in Settings.', 502);
