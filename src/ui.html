@@ -92,6 +92,21 @@ label.f+input,label.f+select,label.f+textarea{width:100%}
 .ptlists{display:grid;grid-template-columns:1fr 1fr;gap:10px 14px;margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}
 .ptlist ul{margin:4px 0 0;padding-left:18px}.ptlist li{margin:3px 0;font-size:14px}
 @media (max-width:640px){.ptgrid{grid-template-columns:1fr}}
+.afbar{display:flex;flex-direction:column;gap:10px;margin:4px 0 12px}
+.afpills{display:flex;flex-wrap:wrap;gap:6px}
+.afpill{display:inline-flex;align-items:center;gap:6px;border:1.5px solid var(--line);background:var(--cloud);color:var(--ink);border-radius:99px;padding:6px 12px;font:600 13px/1.2 var(--body);cursor:pointer}
+.afpill b{font-weight:700;color:var(--soft)}.afpill.on{border-color:var(--rain);background:var(--rain);color:#fff}.afpill.on b{color:#fff}
+.afrow{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.afrow input[type=search]{flex:1;min-width:180px;max-width:280px}.afrow .fdrop{min-width:190px}
+.dot{width:9px;height:9px;border-radius:50%;display:inline-block}
+.afsel{appearance:none;-webkit-appearance:none;border:0;border-radius:99px;padding:4px 26px 4px 11px;font:600 12.5px/1.4 var(--body);cursor:pointer;background-image:linear-gradient(45deg,transparent 50%,currentColor 50%),linear-gradient(135deg,currentColor 50%,transparent 50%);background-position:calc(100% - 13px) 55%,calc(100% - 9px) 55%;background-size:4px 4px;background-repeat:no-repeat}
+.st-found{background-color:#dde8f3;color:#2c5784}.dot.st-found{background:#4a7cb0}
+.st-applied{background-color:var(--sun-soft);color:var(--sun-ink)}.dot.st-applied{background:var(--sun)}
+.st-approved{background-color:#dfe9d6;color:var(--rain-dark)}.dot.st-approved{background:var(--rain)}
+.st-offered{background-color:#ece2f1;color:#5e3f73}.dot.st-offered{background:#8a63a3}
+.st-declined{background-color:var(--bad-soft);color:var(--bad)}.dot.st-declined{background:var(--bad)}
+.st-no_program,.st-none{background-color:var(--mist);color:var(--soft)}.dot.st-no_program{background:#b9b3a6}
+.aftable td{vertical-align:top;padding-top:10px;padding-bottom:10px}.aftable .afname{font-weight:700;color:var(--ink);text-decoration:none}
+.afnets-help>summary{cursor:pointer;list-style:none}.afnets-help>summary::-webkit-details-marker{display:none}.afnets-help .links{margin-top:8px}
 .afstat{text-align:left;cursor:pointer;font:inherit;color:inherit}.afstat.on{border-color:var(--rain);box-shadow:inset 0 0 0 1.5px var(--rain);background:var(--mist)}
 .afnets{margin-bottom:12px}
 .aflinks{white-space:nowrap}.aflinks a,.aflinks button{display:block;margin:0 0 4px}.aflinks .muted{color:var(--soft)}
@@ -1621,46 +1636,65 @@ function awinCard(AW, rows) {
       <div class="card kpi"><div class="v">${e.error ? '–' : '$' + (e.commission ?? 0).toFixed(2)}</div><div class="l">commission, 30 days</div></div>
       <div class="card kpi"><div class="v">${e.error ? '–' : e.clicks ?? 0}</div><div class="l">clicks, 30 days</div></div>
     </div>
-    ${toJoin.length ? `<div class="small"><b>Join next</b>${afF.secs.length ? ` in ${esc(afF.secs.join(', '))}` : ''} (on Awin, matched to brands on your site, best earnings per click first): ${toJoin.slice(0, 8).map((r) => `<a href="${esc(r.apply_url)}" target="_blank" rel="noopener">${esc(r.brand)}</a>`).join(', ')}${toJoin.length > 8 ? ` and ${toJoin.length - 8} more (tick Awin below)` : ''}</div>` : ''}
+    ${toJoin.length ? `<div class="small"><b>Join next</b>${afF.secs.length ? ` in ${esc(afF.secs.join(', '))}` : ''} (on Awin, matched to brands on your site, best earnings per click first): ${toJoin.slice(0, 8).map((r) => `<a href="${esc(r.apply_url)}" target="_blank" rel="noopener">${esc(r.brand)}</a>`).join(', ')}${toJoin.length > 8 ? ` and ${toJoin.length - 8} more (pick Awin under All networks)` : ''}</div>` : ''}
     ${e.error ? `<div class="small" style="color:var(--fox)">${esc(e.error)}</div>` : ''}</div>`;
 }
+// Status colors: found = blue (not applied yet), applied = amber (waiting), approved = green, declined = red, no program = grey.
+const AF_STATES = [['found', 'Found'], ['applied', 'Applied'], ['approved', 'Approved'], ['offered', 'They offered'], ['declined', 'Declined'], ['no_program', 'No program']];
+const afSel = (r) => `<select class="afsel st-${esc(r.status)}" data-afset="${r.id}" title="Change status">${AF_STATES.map(([k, l]) => `<option value="${k}" ${r.status === k ? 'selected' : ''}>${l}</option>`).join('')}${AF_STATES.some(([k]) => k === r.status) ? '' : `<option selected>${esc(label(r.status))}</option>`}</select>`;
+let afQ = '';
 async function loadAffiliates() {
   const everything = await api('/api/affiliates');
   // Category (department) filter applies first: e.g. only brands that sell strollers.
   const secCounts = everything.reduce((a, r) => { for (const x of parse(r.sections, [])) a[x] = (a[x] || 0) + 1; return a; }, {});
-  const all = everything.filter((r) => !afF.secs.length || parse(r.sections, []).some((x) => afF.secs.includes(x)));
+  const q = afQ.toLowerCase();
+  const all = everything.filter((r) => (!afF.secs.length || parse(r.sections, []).some((x) => afF.secs.includes(x))) && (!q || String(r.brand).toLowerCase().includes(q)));
   const counts = all.filter((r) => !afF.nets.length || afF.nets.includes(netOf(r))).reduce((a, r) => ((a[r.status] = (a[r.status] || 0) + 1), a), {});
   const netCounts = all.filter((r) => !afF.status || r.status === afF.status).reduce((a, r) => ((a[netOf(r)] = (a[netOf(r)] || 0) + 1), a), {});
   const netName = (k) => k === 'own' ? 'Own program / not known' : NETWORKS[k] || k;
   const list = all.filter((r) => (!afF.nets.length || afF.nets.includes(netOf(r))) && (!afF.status || r.status === afF.status));
   const link = (h, t) => `<a class="lk" href="${h}" target="_blank" rel="noopener">${t}</a>`;
   const AW = await api('/api/awin').catch(() => null);
+  const filtered = afF.nets.length || afF.status || afF.secs.length || afQ;
+  const total = Object.values(counts).reduce((a, b) => a + b, 0);
   $('#tab-affiliates').innerHTML = `<div class="row" style="margin-bottom:10px"><h2 style="flex:1">Affiliate programs</h2><a class="btn sm ghost" href="/api/export/affiliates.csv">Export</a></div>
     ${awinCard(AW, all)}
-    <div class="card"><b>Join these networks first.</b> <span class="muted small">Most baby brands run their program through one of them, so one approved account unlocks many brands. Many networks review your site before approving, so apply once ${esc(S.settings.site_name)} is live on its real domain with an affiliate disclosure and privacy policy.</span>
-      <div class="links" style="margin-top:10px">${link('https://impact.com/partners/', 'Impact')}${link('https://www.awin.com/us/publishers', 'Awin (incl. ShareASale)')}${link('https://www.cj.com/publisher', 'CJ')}${link('https://www.avantlink.com/affiliates/', 'AvantLink')}${link('https://rakutenadvertising.com/publishers/', 'Rakuten')}${link('https://partnerize.com/', 'Partnerize')}${link('https://affiliate-program.amazon.com/', 'Amazon Associates')}</div></div>
-    <div class="row" style="gap:8px;margin:4px 0 10px"><span class="small muted"><b>Category</b></span>
-      <details class="fdrop afsec" ${window._afSecOpen ? 'open' : ''} style="min-width:240px"><summary>${afF.secs.length ? esc(afF.secs.join(', ')) : 'All categories'}${afF.secs.length ? ` <span class="fcount">${afF.secs.length}</span>` : ''}</summary>
-        <div class="fmenu">${Object.entries(secCounts).sort((x, y) => y[1] - x[1]).map(([k, n]) => `<label class="chk"><input type="checkbox" data-afsec="${esc(k)}" ${afF.secs.includes(k) ? 'checked' : ''}> ${esc(k)} <span class="muted">(${n})</span></label>`).join('')}</div></details></div>
-    <div class="small muted" style="margin:4px 0 6px"><b>Filter by network</b> (tick any)</div>
-    <div class="checks afnets">${Object.entries(netCounts).sort((x, y) => (x[0] === 'own') - (y[0] === 'own') || y[1] - x[1]).map(([k, n]) =>
-      `<label class="chk"><input type="checkbox" data-afnet="${esc(k)}" ${afF.nets.includes(k) ? 'checked' : ''}> ${esc(netName(k))} <span class="muted">(${n})</span></label>`).join('')}
-      ${afF.nets.length || afF.status || afF.secs.length ? `<button class="btn sm ghost" id="afClear">Clear filters</button>` : ''}</div>
-    <div class="kpis">${['found', 'applied', 'approved', 'declined', 'no_program'].map((k) => `<button class="card kpi afstat ${afF.status === k ? 'on' : ''}" data-afstat="${k}" title="Show only ${label(k)}"><div class="v">${counts[k] || 0}</div><div class="l">${label(k)}</div></button>`).join('')}</div>
-    ${afF.nets.length || afF.status || afF.secs.length ? `<div class="small muted" style="margin-bottom:8px">Showing ${list.length} of ${everything.length}${afF.secs.length ? ` · ${esc(afF.secs.join(', '))}` : ''}${afF.status ? ` · ${label(afF.status)}` : ''}${afF.nets.length ? ` · ${afF.nets.map(netName).join(', ')}` : ''}</div>` : ''}
-    ${list.length ? `<div class="card tablewrap"><table><tr><th>Brand</th><th>Status</th><th>Network</th><th>Commission</th><th>Cookie</th><th></th></tr>
-      ${list.map((r) => `<tr><td><a href="#" data-brandlink="${r.id}">${esc(r.brand)}</a><div class="small muted">${r.product_count} products${parse(r.sections, []).length ? ' · ' + esc(parse(r.sections, []).slice(0, 2).join(', ')) : ''}</div></td>
-        <td>${tag(r.status)}</td><td>${NETWORK_HOME[r.network] ? `<a href="${NETWORK_HOME[r.network]}" target="_blank" rel="noopener" title="Open your ${esc(NETWORKS[r.network])} account">${esc(NETWORKS[r.network])} ↗</a>` : esc(NETWORKS[r.network] || r.network || '')}${awinStats(r)}</td><td>${esc(r.commission || '')}</td><td>${esc(r.cookie_days || '')}</td>
+    <div class="afbar">
+      <div class="afpills"><button class="afpill ${!afF.status ? 'on' : ''}" data-afstat="">All <b>${total}</b></button>${AF_STATES.filter(([k]) => counts[k] || afF.status === k).map(([k, l]) => `<button class="afpill ${afF.status === k ? 'on' : ''}" data-afstat="${k}"><i class="dot st-${k}"></i>${l} <b>${counts[k] || 0}</b></button>`).join('')}</div>
+      <div class="afrow">
+        <input id="afQ" type="search" placeholder="Search brands" value="${esc(afQ)}">
+        <details class="fdrop afsec" ${window._afSecOpen ? 'open' : ''}><summary>${afF.secs.length ? esc(afF.secs.join(', ')) : 'All categories'}${afF.secs.length ? ` <span class="fcount">${afF.secs.length}</span>` : ''}</summary>
+          <div class="fmenu">${Object.entries(secCounts).sort((x, y) => y[1] - x[1]).map(([k, n]) => `<label class="chk"><input type="checkbox" data-afsec="${esc(k)}" ${afF.secs.includes(k) ? 'checked' : ''}> ${esc(k)} <span class="muted">(${n})</span></label>`).join('')}</div></details>
+        <details class="fdrop afnet" ${window._afNetOpen ? 'open' : ''}><summary>${afF.nets.length ? esc(afF.nets.map(netName).join(', ')) : 'All networks'}${afF.nets.length ? ` <span class="fcount">${afF.nets.length}</span>` : ''}</summary>
+          <div class="fmenu">${Object.entries(netCounts).sort((x, y) => (x[0] === 'own') - (y[0] === 'own') || y[1] - x[1]).map(([k, n]) => `<label class="chk"><input type="checkbox" data-afnet="${esc(k)}" ${afF.nets.includes(k) ? 'checked' : ''}> ${esc(netName(k))} <span class="muted">(${n})</span></label>`).join('')}</div></details>
+        ${filtered ? `<button class="btn sm ghost" id="afClear">Clear</button><span class="small muted">${list.length} of ${everything.length}</span>` : ''}
+      </div></div>
+    ${list.length ? `<div class="card tablewrap aftable"><table><tr><th>Brand</th><th>Status</th><th>Network</th><th>Pays</th><th></th></tr>
+      ${list.map((r) => `<tr><td><a href="#" class="afname" data-brandlink="${r.id}">${esc(r.brand)}</a><div class="small muted">${parse(r.sections, []).slice(0, 2).map(esc).join(', ') || r.product_count + ' products'}</div></td>
+        <td>${afSel(r)}</td>
+        <td>${NETWORK_HOME[r.network] ? `<a href="${NETWORK_HOME[r.network]}" target="_blank" rel="noopener" title="Open your ${esc(NETWORKS[r.network])} account">${esc(NETWORKS[r.network])}</a>` : `<span class="muted">${esc(NETWORKS[r.network] || r.network || 'Own program')}</span>`}${awinStats(r)}</td>
+        <td>${esc(r.commission || '')}${r.cookie_days ? `<div class="small muted">${esc(r.cookie_days)}-day cookie</div>` : ''}</td>
         <td class="aflinks">${affLinks(r)}</td></tr>`).join('')}</table></div>`
-      : `<div class="empty">${all.length ? 'No programs match these filters.' : 'No programs yet. Research brands with Claude, or set a brand\'s affiliate status.'}</div>`}`;
-  $$('#tab-affiliates [data-afnet]').forEach((c) => (c.onchange = () => { const k = c.dataset.afnet; afF.nets = c.checked ? [...afF.nets, k] : afF.nets.filter((x) => x !== k); loadAffiliates(); }));
-  $$('#tab-affiliates [data-afstat]').forEach((b) => (b.onclick = () => { afF.status = afF.status === b.dataset.afstat ? '' : b.dataset.afstat; loadAffiliates(); }));
+      : `<div class="empty">${everything.length ? 'No programs match these filters.' : 'No programs yet. Research brands with Claude, or set a brand\'s affiliate status.'}</div>`}
+    <details class="card afnets-help"><summary><b>Networks to join</b> <span class="muted small">one approved account unlocks many brands</span></summary>
+      <p class="small muted">Most baby brands run their program through one of these. Many review your site before approving, so have an affiliate disclosure and privacy policy live.</p>
+      <div class="links">${link('https://impact.com/partners/', 'Impact')}${link('https://www.awin.com/us/publishers', 'Awin (incl. ShareASale)')}${link('https://www.cj.com/publisher', 'CJ')}${link('https://www.avantlink.com/affiliates/', 'AvantLink')}${link('https://rakutenadvertising.com/publishers/', 'Rakuten')}${link('https://partnerize.com/', 'Partnerize')}${link('https://affiliate-program.amazon.com/', 'Amazon Associates')}</div></details>`;
+  $$('#tab-affiliates [data-afnet]').forEach((c) => (c.onchange = () => { const k = c.dataset.afnet; afF.nets = c.checked ? [...afF.nets, k] : afF.nets.filter((x) => x !== k); window._afNetOpen = true; loadAffiliates(); }));
+  $$('#tab-affiliates [data-afstat]').forEach((b) => (b.onclick = () => { afF.status = b.dataset.afstat; loadAffiliates(); }));
   $$('#tab-affiliates [data-copylink]').forEach((b) => (b.onclick = async () => { await navigator.clipboard.writeText(b.dataset.copylink); toast('Affiliate link copied'); }));
+  // Mark a program found / applied / approved / declined by hand
+  $$('#tab-affiliates [data-afset]').forEach((sel) => (sel.onchange = async () => {
+    const v = sel.value; sel.className = `afsel st-${v}`;
+    try { await post(`/api/brands/${sel.dataset.afset}`, { affiliate_status: v }); toast(`Marked ${label(v)}`); loadAffiliates(); }
+    catch (e) { toast(e.message); loadAffiliates(); }
+  }));
+  $('#afQ')?.addEventListener('input', (e) => { afQ = e.target.value; clearTimeout(window._afT); window._afT = setTimeout(() => { loadAffiliates().then(() => { const i = $('#afQ'); i.focus(); i.setSelectionRange(i.value.length, i.value.length); }); }, 250); });
   $('#awSync')?.addEventListener('click', async (e) => { e.target.disabled = true; e.target.textContent = 'Syncing…';
     try { const r = await post('/api/awin/sync'); toast(`Awin: ${r.matched} brands matched${r.changed ? `, ${r.changed} updated` : ''}`); loadAffiliates(); } catch (er) { toast(er.message); e.target.disabled = false; e.target.textContent = 'Sync now'; } });
-  $('#afClear')?.addEventListener('click', () => { afF.nets = []; afF.status = ''; afF.secs = []; window._afSecOpen = false; loadAffiliates(); });
+  $('#afClear')?.addEventListener('click', () => { afF.nets = []; afF.status = ''; afF.secs = []; afQ = ''; window._afSecOpen = window._afNetOpen = false; loadAffiliates(); });
   $$('#tab-affiliates [data-afsec]').forEach((c) => (c.onchange = () => { const k = c.dataset.afsec; afF.secs = c.checked ? [...afF.secs, k] : afF.secs.filter((x) => x !== k); window._afSecOpen = true; loadAffiliates(); }));
   $('#tab-affiliates .afsec')?.addEventListener('toggle', (e) => { window._afSecOpen = e.target.open; });
+  $('#tab-affiliates .afnet')?.addEventListener('toggle', (e) => { window._afNetOpen = e.target.open; });
 }
 
 // ---------- PERMISSIONS ----------
