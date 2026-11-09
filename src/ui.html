@@ -590,7 +590,16 @@ const PROSPECT_COLS = (k) => [{ l: 'Found', s: ['found'], c: '#d9cfb6', k }, { l
 const contactLine = (x) => x.contact_email ? `✉ ${esc(x.contact_email)}` : x.contact_url ? '🔗 Contact form' : x.researched_at ? '<span>No email published</span>' : '<span>Not researched yet</span>';
 const brandPc = (b) => `<div class="pc" data-brand="${b.id}"><div class="d">${favOf(b.domain)}<span>${esc(b.name)}</span></div>
   <div class="m">${pctTag(b.reply_odds)}${attemptTag(b)}<span>${b.product_count} product${b.product_count === 1 ? '' : 's'}</span>${parse(b.sections, []).slice(0, 1).map((x) => `<span class="tag">${esc(x)}</span>`).join('')}</div>
-  <div class="m">${contactLine(b)}</div>${askTags(b) ? `<div class="m">${askTags(b)}</div>` : ''}</div>`;
+  <div class="m">${contactLine(b)}</div>${nextTry(b)}${askTags(b) ? `<div class="m">${askTags(b)}</div>` : ''}</div>`;
+// On sent cards: when the follow-up is due and when the brand moves to its next try (checked hourly).
+function nextTry(b) {
+  if (b.status !== 'contacted' || !b.next_try_on) return '';
+  const days = (d) => Math.round((Date.parse(d + 'T12:00:00') - Date.parse(new Date().toISOString().slice(0, 10) + 'T12:00:00')) / 864e5);
+  const when = (d) => { const n = days(d); return n <= 0 ? 'today' : n === 1 ? 'tomorrow' : `in ${n} days`; };
+  const n = b.attempt || 1, next = n >= 4 ? 'Re-reach' : n === 3 ? 'their form' : ['', '', '2nd', '3rd'][n + 1] + ' try';
+  const fu = !b.followups_sent && b.follow_up_on && n < 4 ? `<div class="m"><span class="tag ${days(b.follow_up_on) <= 0 ? 'warn' : ''}">Follow-up due ${when(b.follow_up_on)}</span></div>` : '';
+  return `${fu}<div class="m"><span class="tag ${days(b.next_try_on) <= 0 ? 'info' : ''}">Moves to ${next} ${when(b.next_try_on)}</span></div>`;
+}
 const creatorPc = (p) => `<div class="pc" data-prospect="${p.id}"><div class="d"><span>${PLATFORM_ICON[p.platform] || ''} ${esc(p.name || p.handle)}</span></div>
   <div class="m">${pctTag(p.odds)}${p.followers != null ? `<span>${Number(p.followers).toLocaleString()} followers</span>` : ''}</div>
   ${p.video_title ? `<div class="q">“${esc(p.video_title)}”</div>` : ''}<div class="m">${p.contact_email ? `✉ ${esc(p.contact_email)}` : p.researched_at ? 'DM them' : 'Not researched yet'}</div></div>`;

@@ -526,7 +526,12 @@ async function listBrands(env, url) {
   const order = p.get('q') ? `(name LIKE ?) DESC, ${sort}` : sort;
   if (p.get('q')) params.push(`%${p.get('q')}%`);
   return all(env, `SELECT id, name, domain, website, kind, sections, product_count, max_price, has_recall, score, status, contact_name, contact_email,
-      contact_url, reply_odds, email_check, image_status, affiliate_status, affiliate_network, sample_status, collab_status, feed_status, researched_at, follow_up_on, last_contacted_at, attempt
+      contact_url, reply_odds, email_check, image_status, affiliate_status, affiliate_network, sample_status, collab_status, feed_status, researched_at, follow_up_on, last_contacted_at, attempt,
+      -- When a quiet brand moves to its next try (same waits as attempts.js): 7 days after the follow-up, 14 after the first email, 21 after the form
+      CASE WHEN status='contacted' THEN (SELECT CASE WHEN SUM(m.kind='form')>0 THEN date(MAX(m.sent_at),'+21 days')
+          WHEN SUM(m.kind='followup')>0 THEN date(MAX(m.sent_at),'+7 days') ELSE date(MIN(m.sent_at),'+14 days') END
+        FROM messages m WHERE m.brand_id=b.id AND COALESCE(m.attempt,1)=COALESCE(b.attempt,1) AND m.status IN ('sent','sent_manual') AND m.kind IN ('initial','followup','form')) END next_try_on,
+      CASE WHEN status='contacted' THEN (SELECT COUNT(*) FROM messages m WHERE m.brand_id=b.id AND COALESCE(m.attempt,1)=COALESCE(b.attempt,1) AND m.kind='followup' AND m.status IN ('sent','sent_manual')) END followups_sent
       FROM brands b ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY ${order} LIMIT 1000`, ...params);
 }
 
