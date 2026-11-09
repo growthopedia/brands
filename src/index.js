@@ -54,6 +54,8 @@ async function ensureSchema(env) {
   if (!cols.includes('awin_id')) await env.DB.prepare(`ALTER TABLE brands ADD COLUMN awin_id INTEGER`).run();
   for (const c of ['contact_phone', 'contact_linkedin', 'contact_photo', 'partner_people', 'partner_checked_at'])
     if (!cols.includes(c)) await env.DB.prepare(`ALTER TABLE brands ADD COLUMN ${c} TEXT`).run();
+  // Partners: 1 = removed from the Partners tab by hand.
+  if (!cols.includes('partner_hidden')) await env.DB.prepare(`ALTER TABLE brands ADD COLUMN partner_hidden INTEGER NOT NULL DEFAULT 0`).run();
   const rcols = (await all(env, `PRAGMA table_info(replies)`)).map((x) => x.name);
   if (!rcols.includes('from_name')) await env.DB.prepare(`ALTER TABLE replies ADD COLUMN from_name TEXT`).run();
   // One time: the person who replied becomes each brand's contact (name + title from their signature).
@@ -276,6 +278,7 @@ export default {
         if (sub === 'research' && method === 'POST') return json(await researchBrand(env, id));
         if (sub === 'people' && method === 'POST') return json(await P.findPeople(env, id));
         if (sub === 'photo' && method === 'POST') return json(await P.savePhoto(env, id, await body()));
+        if (sub === 'unpartner' && method === 'POST') return json(await P.removePartner(env, id, await body()));
         if (sub === 'draft' && method === 'POST') return json(await draftEmail(env, id, await body()));
         if (sub === 'contacts' && method === 'POST') return json(await addContact(env, id, await body()));
         if (sub === 'activity' && method === 'POST') return json(await addActivity(env, id, await body()));

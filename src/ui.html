@@ -1736,6 +1736,17 @@ async function loadPartners() {
   }));
   $$('#tab-partners [data-ptphoto]').forEach((b) => (b.onclick = () => photoDlg(Number(b.dataset.ptphoto))));
   $$('#tab-partners [data-ptedit]').forEach((b) => (b.onclick = () => editContactDlg(list.find((x) => x.id == b.dataset.ptedit))));
+  // Remove a card: either they never really replied (back into the outreach schedule) or just hide it.
+  $$('#tab-partners [data-ptremove]').forEach((b) => (b.onclick = () => {
+    const id = b.dataset.ptremove;
+    openDlg(`Remove ${b.dataset.name}`, `<p class="small">Why is it coming off Partners?</p>
+      <div class="col" style="display:flex;flex-direction:column;gap:8px">
+        <button class="btn" data-rm="noreply">They never really replied <span class="small" style="font-weight:400">· an auto-reply or a mistake. Goes back to contacted, so the next try happens on schedule</span></button>
+        <button class="btn ghost" data-rm="hide">Just hide this card <span class="small" style="font-weight:400">· keeps everything else as it is</span></button></div>`);
+    $$('#dlg [data-rm]').forEach((x) => (x.onclick = async () => {
+      try { await post(`/api/brands/${id}/unpartner`, { mode: x.dataset.rm }); closeDlg(); toast(`${b.dataset.name} removed from Partners`); loadPartners(); } catch (e) { toast(e.message); }
+    }));
+  }));
 }
 
 function partnerCard(b) {
@@ -1783,6 +1794,7 @@ function partnerCard(b) {
       ${S.claude.set ? `<button class="btn sm" data-ptfind="${b.id}">${b.partner_checked_at ? 'Find LinkedIn again' : 'Find LinkedIn'}</button>` : ''}
       <button class="btn sm ghost" data-ptedit="${b.id}">Edit contact</button>
       <button class="btn sm ghost" data-brandlink="${b.id}">Open brand</button>
+      <button class="btn sm ghost danger" data-ptremove="${b.id}" data-name="${esc(b.name)}">Remove</button>
     </div>
     ${b.partner_checked_at ? `<div class="small muted" style="margin-top:6px">LinkedIn checked ${esc(fmtDay(b.partner_checked_at))}. Check the profile is the right person before reaching out.</div>` : ''}
   </div>`;

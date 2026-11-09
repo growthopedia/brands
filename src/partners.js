@@ -23,8 +23,34 @@ export async function listPartners(env) {
       b.image_status, b.affiliate_status, b.sample_status, b.collab_status, b.feed_status, b.affiliate_network,
       (SELECT MAX(sent_at) FROM messages m WHERE m.brand_id=b.id AND m.status IN ('sent','sent_manual')) last_sent,
       (SELECT MAX(received_at) FROM replies r WHERE r.brand_id=b.id AND r.kind='reply') last_reply
-    FROM brands b WHERE b.status != 'do_not_contact' AND (b.status IN ('replied','partner') OR ${yesSql} OR ${offeredSql})
+    FROM brands b WHERE b.status != 'do_not_contact' AND COALESCE(b.partner_hidden,0)=0
+      -- "Replied" only counts with a real reply on file (not an auto-reply or a status set by mistake)
+      AND (b.status='partner' OR ${yesSql} OR ${offeredSql}
+        OR (b.status='replied' AND EXISTS (SELECT 1 FROM replies r WHERE r.brand_id=b.id AND r.kind='reply')))
     ORDER BY COALESCE((SELECT MAX(received_at) FROM replies r WHERE r.brand_id=b.id AND r.kind='reply'), b.updated_at) DESC`);
+}
+
+// Take a brand off Partners.
+//   mode 'noreply': they never really answered (auto-reply or marked by mistake). Their replies count as automatic, asks marked
+//     "replied" go back to "asked", and the brand goes back to "contacted" so the next-try schedule picks it up again.
+//   mode 'hide': just hide the card (they replied but aren't a partner). Undo by setting it back from the brand.
+export async function removePartner(env, id, body = {}) {
+  const b = await first(env, `SELECT * FROM brands WHERE id=?`, id);
+  if (!b) throw fail('Brand not found', 404);
+  if (body.mode === 'noreply') {
+    const asks = Object.keys(YES).map((c) => `${c}=CASE WHEN ${c}='replied' THEN 'asked' ELSE ${c} END`).join(', ');
+    await env.DB.batch([
+      env.DB.prepare(`UPDATE replies SET kind='auto' WHERE brand_id=? AND kind='reply'`).bind(id),
+      env.DB.prepare(`UPDATE brands SET ${asks}, status=CASE WHEN status IN ('replied','partner') THEN 'contacted' ELSE status END, updated_at=datetime('now') WHERE id=?`).bind(id),
+      env.DB.prepare(`INSERT INTO activity (brand_id, kind, note) VALUES (?, 'status', ?)`).bind(id, 'Not a real reply: removed from Partners, back to contacted'),
+    ]);
+    return { ok: true };
+  }
+  await env.DB.batch([
+    env.DB.prepare(`UPDATE brands SET partner_hidden=1, updated_at=datetime('now') WHERE id=?`).bind(id),
+    env.DB.prepare(`INSERT INTO activity (brand_id, kind, note) VALUES (?, 'status', 'Removed from Partners')`).bind(id),
+  ]);
+  return { ok: true };
 }
 
 const PEOPLE_SYSTEM = `You help Jen, who runs Cribpicks (a baby gear comparison website), keep a contact card for a brand she works with.
