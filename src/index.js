@@ -228,6 +228,7 @@ export default {
 
       // ---- creators ----
       if (path === '/api/creators/summary') return json(await C.creatorSummary(env));
+      if (path === '/api/creators/products' && method === 'GET') return json(await C.searchProducts(env, url));
       if (path === '/api/creators' && method === 'GET') { const u = new URL(url); u.searchParams.set('kind', 'creator'); return json(await L.listProspects(env, u)); }
       if (path === '/api/creators' && method === 'POST') return json(await C.addCreator(env, await body()));
       if (path === '/api/creators/find' && method === 'POST') return json(await C.findCreators(env, await body()));

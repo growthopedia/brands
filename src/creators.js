@@ -39,6 +39,30 @@ function parseFollowers(v) {
   return Number.isFinite(n) && n >= 0 ? Math.round(n) : null;
 }
 
+// Product lookup by typed words, so "austlen entourage 2.0" still finds "Austlen Entourage". Every word is tried on
+// brand + product name; rows matching the most words win. Words like "stroller" or "2.0" may not be in our name, so
+// a row only needs most of the words, not all of them.
+const STOP = new Set(['the', 'and', 'for', 'with', 'baby', 'by']);
+async function matchProducts(env, q, limit = 12) {
+  const words = String(q || '').toLowerCase().replace(/[^a-z0-9.+\s-]/g, ' ').split(/\s+/).filter((w) => w.length > 1 && !STOP.has(w)).slice(0, 6);
+  if (!words.length) return [];
+  const hay = `lower(b.name || ' ' || p.name)`;
+  const score = words.map(() => `(CASE WHEN ${hay} LIKE ? THEN 1 ELSE 0 END)`).join(' + ');
+  const rows = await all(env, `SELECT p.id, p.name, p.site_url, p.section, b.name brand, (${score}) score FROM products p JOIN brands b ON b.id=p.brand_id
+    WHERE ${words.map(() => `${hay} LIKE ?`).join(' OR ')} ORDER BY score DESC, length(p.name) LIMIT 80`, ...words.map((w) => `%${w}%`), ...words.map((w) => `%${w}%`));
+  if (!rows.length) return [];
+  const need = words.length <= 2 ? words.length : Math.ceil(words.length * 0.6);
+  const top = rows[0].score;
+  return rows.filter((r) => r.score >= Math.min(need, top)).slice(0, limit);
+}
+const fullName = (r) => (r.name.toLowerCase().startsWith(r.brand.toLowerCase()) ? r.name : `${r.brand} ${r.name}`);
+
+// Typeahead for the finder's product box.
+export async function searchProducts(env, url) {
+  const q = new URL(url).searchParams.get('q') || '';
+  return (await matchProducts(env, q, 12)).map((r) => ({ id: r.id, name: fullName(r), section: r.section }));
+}
+
 // Products a finder run focuses on, and our page for each.
 async function focusProducts(env, focusType, focus) {
   const s = await cfg(env);
@@ -47,8 +71,8 @@ async function focusProducts(env, focusType, focus) {
   let rows = [];
   if (focusType === 'brand') rows = await all(env, `SELECT p.id, p.name, p.site_url, b.name brand FROM products p JOIN brands b ON b.id=p.brand_id WHERE lower(b.name)=lower(?) ORDER BY p.price IS NULL, p.price DESC LIMIT 60`, focus);
   else if (focusType === 'category') rows = await all(env, `SELECT p.id, p.name, p.site_url, b.name brand FROM products p JOIN brands b ON b.id=p.brand_id WHERE p.section=? ORDER BY b.reply_odds IS NULL, p.price IS NULL, p.price DESC LIMIT 60`, focus);
-  else if (focusType === 'product') rows = await all(env, `SELECT p.id, p.name, p.site_url, b.name brand FROM products p JOIN brands b ON b.id=p.brand_id WHERE p.name LIKE ? OR (b.name || ' ' || p.name) LIKE ? LIMIT 20`, `%${focus}%`, `%${focus}%`);
-  return rows.map((r) => ({ id: r.id, name: r.name.toLowerCase().startsWith(r.brand.toLowerCase()) ? r.name : `${r.brand} ${r.name}`, url: fix(r.site_url) }));
+  else if (focusType === 'product') rows = await matchProducts(env, focus, 20);
+  return rows.map((r) => ({ id: r.id, name: fullName(r), url: fix(r.site_url) }));
 }
 
 // ---------- find creators with Claude + web search ----------
@@ -61,7 +85,8 @@ export async function findCreators(env, body) {
   const want = Math.max(5, Math.min(15, Number(body.count) || 15));
   const s = await cfg(env);
   const products = focusType === 'registry' ? [] : await focusProducts(env, focusType, focus);
-  if (focusType !== 'registry' && !products.length) throw fail('No products on the site match that. Pick another one.');
+  // A typed product that isn't on the site yet still gets searched; those creators just point at the site's main pages.
+  if ((focusType === 'brand' || focusType === 'category') && !products.length) throw fail('No products on the site match that. Pick another one.');
   const pages = await ourPages(env);
   const existing = (await all(env, `SELECT domain FROM link_prospects WHERE kind='creator' ORDER BY id DESC LIMIT 400`)).map((r) => r.domain.split('/').slice(1).join('/'));
   const model = RESEARCH_MODEL(env);

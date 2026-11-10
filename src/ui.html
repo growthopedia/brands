@@ -1367,6 +1367,9 @@ async function loadCreators() {
   const opt = (v, txt, cur) => `<option value="${esc(v)}" ${v === cur ? 'selected' : ''}>${esc(txt)}</option>`;
   el.innerHTML = `<div class="row" style="margin-bottom:10px"><h2 style="flex:1">Creators</h2>${viewSeg('creators')}<span class="spacer"></span>
       <button class="btn sm primary" onclick="findCreatorsDlg()">Find creators</button><button class="btn sm ghost" onclick="addCreatorDlg()">Add one</button></div>
+    <form class="row" style="margin-bottom:10px;gap:8px" onsubmit="event.preventDefault(); findCreatorsDlg($('#cpQ').value)">
+      <input id="cpQ" list="cpList" placeholder="Search creators by product, e.g. Austlen Entourage" autocomplete="off" style="flex:1;min-width:0">
+      <datalist id="cpList"></datalist><button class="btn sm primary" type="submit">Search</button></form>
     <p class="small muted" style="margin-top:-4px">Small creators who posted registry or product videos about gear on the site. Invite them to check the comparison page for what they featured and share it if it helps their viewers, and ask to feature them as "Recommended by creators". Every yes is logged in their own words before anything goes on the site.</p>
     <div class="kpis tight">${[[Object.values(st).reduce((a, b) => a + b, 0), 'Creators'], [CREATORS.contacted, 'Contacted'], [CREATORS.replied, 'Replied'],
       [ft.shared || 0, 'Shared the site'], [(ft.feature || 0) + (ft.embed || 0), 'OK to feature'], [st.won || 0, 'Said yes']].map(([v, l]) => `<div class="card kpi"><div class="v">${v}</div><div class="l">${l}</div></div>`).join('')}</div>
@@ -1386,6 +1389,7 @@ async function loadCreators() {
     </div><div id="cList"></div>`;
   el.querySelectorAll('[data-size]').forEach((b) => (b.onclick = () => { cf.size = b.dataset.size; loadCreators(); }));
   $('#fillFol')?.addEventListener('click', fillFollowers);
+  productTypeahead($('#cpQ'), $('#cpList'));
   await loadCreatorList();
 }
 async function loadCreatorList() {
@@ -1414,12 +1418,27 @@ async function fillFollowers(e) {
   } catch (err) { toast(err.message); }
   prog.innerHTML = ''; loadCreators();
 }
-async function findCreatorsDlg() {
+// Product typeahead: fills a datalist from the site's products as you type (any word order, partial names).
+function productTypeahead(input, list, when = () => true) {
+  let t, last = '';
+  input.addEventListener('input', () => {
+    clearTimeout(t);
+    if (!when()) return;
+    t = setTimeout(async () => {
+      const q = input.value.trim();
+      if (q.length < 2 || q === last) return;
+      last = q;
+      try { const rows = await api('/api/creators/products?q=' + encodeURIComponent(q)); list.innerHTML = rows.map((r) => `<option value="${esc(r.name)}">${esc(r.section || '')}</option>`).join(''); } catch {}
+    }, 200);
+  });
+}
+async function findCreatorsDlg(product) {
   if (!S.claude.set) return toast('Add your Claude key in Settings first.');
   if (!CREATORS) CREATORS = await api('/api/creators/summary');
+  if (typeof product === 'string' && !product.trim()) return toast('Type a product first.');
   openDlg('Find creators', `
     <label class="f">Look for videos about</label>
-    <select id="fcType" style="width:100%"><option value="registry">Baby registries (what I registered for, must-haves)</option><option value="category">A category on the site</option><option value="brand">A brand on the site</option><option value="product">A specific product</option></select>
+    <select id="fcType" style="width:100%"><option value="product" selected>A specific product</option><option value="registry">Baby registries (what I registered for, must-haves)</option><option value="category">A category on the site</option><option value="brand">A brand on the site</option></select>
     <div id="fcFocusWrap" hidden><label class="f" id="fcFocusLabel">Category</label><input id="fcFocus" list="fcList" style="width:100%" autocomplete="off"><datalist id="fcList"></datalist></div>
     <div class="grid2"><div><label class="f">Creator size</label><select id="fcSize" style="width:100%"><option value="any">A mix of sizes</option><option value="small">Small (under 25k followers)</option><option value="medium">Medium (25k to 250k)</option><option value="large">Large (250k and up)</option></select></div>
       <div><label class="f">How many</label><select id="fcCount" style="width:100%"><option>15</option><option selected>30</option><option>45</option><option>60</option></select></div></div>
@@ -1429,12 +1448,15 @@ async function findCreatorsDlg() {
   const setList = () => {
     const t = $('#fcType').value;
     $('#fcFocusWrap').hidden = t === 'registry';
-    $('#fcFocusLabel').textContent = { category: 'Category', brand: 'Brand', product: 'Product name' }[t] || '';
+    $('#fcFocusLabel').textContent = { category: 'Category', brand: 'Brand', product: 'Product (type any part of the name)' }[t] || '';
     $('#fcFocus').value = '';
     $('#fcList').innerHTML = (t === 'category' ? CREATORS.sections : t === 'brand' ? CREATORS.brands : []).map((x) => `<option value="${esc(x.v)}">`).join('');
-    $('#fcFocus').placeholder = t === 'product' ? 'e.g. UPPAbaby Vista V3' : 'Start typing…';
+    $('#fcFocus').placeholder = t === 'product' ? 'e.g. Austlen Entourage' : 'Start typing…';
   };
   $('#fcType').onchange = setList;
+  setList();
+  productTypeahead($('#fcFocus'), $('#fcList'), () => $('#fcType').value === 'product');
+  if (typeof product === 'string') $('#fcFocus').value = product.trim();
   $('#fcGo').onclick = async (e) => {
     const target = Number($('#fcCount').value), size = $('#fcSize').value;
     e.target.disabled = true;
